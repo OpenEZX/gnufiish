@@ -167,11 +167,11 @@ static struct s3c2410fb_display glofiish_displays[] =  {
 		.bpp		= 16,
 
 		.pixclock	= 40000,	/* HCLK/4 */
-		.left_margin	= 104,
-		.right_margin	= 8,
-		.hsync_len	= 8,
+		.left_margin	= 2,
+		.right_margin	= 2,
+		.hsync_len	= 2,
 		.upper_margin	= 2,
-		.lower_margin	= 16,
+		.lower_margin	= 66,
 		.vsync_len	= 2,
 		.lcdcon5	= S3C2410_LCDCON5_FRM565 |
 				  S3C2410_LCDCON5_INVVCLK |
@@ -528,7 +528,7 @@ static struct s3c2410_hcd_info glofiish_usb_info = {
 static void __init glofiish_map_io(void)
 {
 	s3c24xx_init_io(gta02_iodesc, ARRAY_SIZE(gta02_iodesc));
-	s3c24xx_init_clocks(12000000);
+	s3c24xx_init_clocks(16934400);
 	s3c24xx_init_uarts(gta02_uartcfgs, ARRAY_SIZE(gta02_uartcfgs));
 }
 
