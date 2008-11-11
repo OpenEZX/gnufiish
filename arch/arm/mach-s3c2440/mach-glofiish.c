@@ -34,7 +34,6 @@
 #include <linux/platform_device.h>
 #include <linux/serial_core.h>
 #include <linux/spi/spi.h>
-#include <linux/spi/glamo.h>
 #include <linux/spi/spi_bitbang.h>
 #include <linux/mmc/host.h>
 
@@ -43,9 +42,6 @@
 #include <linux/mtd/nand_ecc.h>
 #include <linux/mtd/partitions.h>
 #include <linux/mtd/physmap.h>
-
-#include <linux/pcf50633.h>
-#include <linux/lis302dl.h>
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
@@ -117,7 +113,7 @@ struct platform_device gta02_memconfig_device = {
 	.num_resources	= 0,
 };
 
-static struct map_desc gta02_iodesc[] __initdata = {
+static struct map_desc m800_iodesc[] __initdata = {
 	{
 		.virtual	= 0xe0000000,
 		.pfn		= __phys_to_pfn(S3C2410_CS3+0x01000000),
@@ -130,7 +126,7 @@ static struct map_desc gta02_iodesc[] __initdata = {
 #define ULCON S3C2410_LCON_CS8 | S3C2410_LCON_PNONE | S3C2410_LCON_STOPB
 #define UFCON S3C2410_UFCON_RXTRIG8 | S3C2410_UFCON_FIFOMODE
 
-static struct s3c2410_uartcfg gta02_uartcfgs[] = {
+static struct s3c2410_uartcfg m800_uartcfgs[] = {
 	[0] = {
 		.hwport	     = 0,
 		.flags	     = 0,
@@ -235,7 +231,7 @@ static struct s3c2410fb_mach_info glofiish_lcd_cfg __initdata = {
 };
 
 
-static struct resource gta02_sdio_resources[] = {
+static struct resource m800_sdio_resources[] = {
 	[0] = {
 		.flags	= IORESOURCE_IRQ,
 		.start	= IRQ_SDI,
@@ -315,9 +311,6 @@ static void glofiish_udc_command(enum s3c2410_udc_cmd_e cmd)
 
 static void glofiish_udc_vbus_draw(unsigned int ma)
 {
-        if (!pcf50633_global)
-		return;
-
 	//pcf50633_notify_usb_current_limit_change(pcf50633_global, ma);
 }
 
@@ -343,7 +336,7 @@ static struct s3c2410_ts_mach_info glofiish_ts_cfg = {
 
 /* SPI: LCM control interface attached to Glamo3362 */
 
-static void gta02_jbt6k74_reset(int devidx, int level)
+static void m800_jbt6k74_reset(int devidx, int level)
 {
 	//glamo_lcm_reset(level);
 	printk(KERN_DEBUG "gta01_jbt6k74_reset\n");
@@ -351,15 +344,15 @@ static void gta02_jbt6k74_reset(int devidx, int level)
 
 /* finally bring up deferred backlight resume now LCM is resumed itself */
 
-static void gta02_jbt6k74_resuming(int devidx)
+static void m800_jbt6k74_resuming(int devidx)
 {
 	//pcf50633_backlight_resume(pcf50633_global);
 	//gta01bl_deferred_resume();
 }
 
 const struct jbt6k74_platform_data jbt6k74_pdata = {
-	.reset		= gta02_jbt6k74_reset,
-	.resuming	= gta02_jbt6k74_resuming,
+	.reset		= m800_jbt6k74_reset,
+	.resuming	= m800_jbt6k74_resuming,
 };
 
 static struct spi_board_info glofiish_spi_board_info[] = {
@@ -525,11 +518,15 @@ static struct s3c2410_hcd_info glofiish_usb_info = {
 	},
 };
 
+static struct platform_device m800_pm_bt_dev = {
+	.name		= "neo1973-pm-bt",
+};
+
 static void __init glofiish_map_io(void)
 {
-	s3c24xx_init_io(gta02_iodesc, ARRAY_SIZE(gta02_iodesc));
+	s3c24xx_init_io(m800_iodesc, ARRAY_SIZE(m800_iodesc));
 	s3c24xx_init_clocks(16934400);
-	s3c24xx_init_uarts(gta02_uartcfgs, ARRAY_SIZE(gta02_uartcfgs));
+	s3c24xx_init_uarts(m800_uartcfgs, ARRAY_SIZE(m800_uartcfgs));
 }
 
 static irqreturn_t gta02_modem_irq(int irq, void *param)
@@ -578,6 +575,7 @@ static void __init glofiish_machine_init(void)
 	set_s3c2410ts_info(&glofiish_ts_cfg);
 
 	platform_device_register(&gta01_bl_dev);
+	platform_device_register(&m800_pm_bt_dev);
 	platform_device_register(&s3c_device_spi_lcm);
 
 	platform_add_devices(glofiish_devices, ARRAY_SIZE(glofiish_devices));

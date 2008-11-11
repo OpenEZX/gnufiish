@@ -28,6 +28,9 @@
 #include <mach/gta02.h>
 #include <linux/pcf50633.h>
 
+#ifdef CONFIG_MACH_M800
+#include <asm/arch/glofiish.h>
+#endif
 
 #define DRVMSG "FIC Neo1973 Bluetooth Power Management"
 
@@ -46,6 +49,10 @@ static ssize_t bt_read(struct device *dev, struct device_attribute *attr,
 				ret = 1;
 		} else if (machine_is_neo1973_gta02()) {
 			if (s3c2410_gpio_getpin(GTA02_GPIO_BT_EN))
+				ret = 1;
+		} else if (machine_is_m800()) {
+			if (s3c2410_gpio_getpin(M800_GPIO_BT_POWER_1) &&
+			    s3c2410_gpio_getpin(M800_GPIO_BT_POWER_2))
 				ret = 1;
 		}
 	} else if (!strcmp(attr->attr.name, "reset")) {
@@ -96,6 +103,9 @@ static ssize_t bt_write(struct device *dev, struct device_attribute *attr,
 				PCF50633_REGULATOR_LDO4);
 			dev_info(dev, "GTA02 Set PCF50633 LDO4 = %d\n", vol);
 			neo1973_gpb_setpin(GTA02_GPIO_BT_EN, on);
+		} else if (machine_is_m800()) {
+			s3c2410_gpio_setpin(M800_GPIO_BT_POWER_1, on);
+			s3c2410_gpio_setpin(M800_GPIO_BT_POWER_2, on);
 		}
 	} else if (!strcmp(attr->attr.name, "reset")) {
 		/* reset is low-active, so we need to invert */
