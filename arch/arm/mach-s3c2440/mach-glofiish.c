@@ -518,6 +518,31 @@ static struct s3c2410_hcd_info glofiish_usb_info = {
 	},
 };
 
+static struct resource m800_button_resources[] = {
+	[0] = {
+		.start = M800_GPIO_nKEY_POWER,
+		.end   = M800_GPIO_nKEY_POWER,
+	},
+	[1] = {
+		.start = M800_GPIO_nKEY_CAMERA,
+		.end   = M800_GPIO_nKEY_CAMERA,
+	},
+	[3] = {
+		.start = M800_GPIO_nKEY_RECORD,
+		.end   = M800_GPIO_nKEY_RECORD,
+	},
+	[2] = {
+		.start = M800_GPIO_SLIDE,
+		.end   = M800_GPIO_SLIDE,
+	},
+};
+
+static struct platform_device m800_button_dev = {
+	.name		= "m800-button",
+	.num_resources	= ARRAY_SIZE(m800_button_resources),
+	.resource	= m800_button_resources,
+};
+
 static struct platform_device m800_pm_bt_dev = {
 	.name		= "neo1973-pm-bt",
 };
@@ -576,6 +601,7 @@ static void __init glofiish_machine_init(void)
 
 	platform_device_register(&gta01_bl_dev);
 	platform_device_register(&m800_pm_bt_dev);
+	platform_device_register(&m800_button_dev);
 	platform_device_register(&s3c_device_spi_lcm);
 
 	platform_add_devices(glofiish_devices, ARRAY_SIZE(glofiish_devices));
