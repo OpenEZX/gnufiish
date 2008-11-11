@@ -287,7 +287,7 @@ static struct s3c2410_platform_nand glofiish_nand_info = {
 };
 
 static struct s3c24xx_mci_pdata glofiish_mmc_cfg = {
-	//.gpio_detect	= GTA02v1_GPIO_nSD_DETECT,
+	.gpio_detect	= M800_GPIO_nSD_DETECT,
 	.set_power	= NULL,
 	.ocr_avail	= MMC_VDD_32_33,
 };
@@ -298,10 +298,10 @@ static void glofiish_udc_command(enum s3c2410_udc_cmd_e cmd)
 
 	switch (cmd) {
 	case S3C2410_UDC_P_ENABLE:
-		/* FIXME! */
+		s3c2410_gpio_setpin(M800_GPIO_USB_PULLUP, 1);
 		break;
 	case S3C2410_UDC_P_DISABLE:
-		/* FIXME! */
+		s3c2410_gpio_setpin(M800_GPIO_USB_PULLUP, 0);
 		break;
 	case S3C2410_UDC_P_RESET:
 		/* FIXME! */
@@ -435,8 +435,8 @@ static struct gta01bl_machinfo backlight_machinfo = {
 
 static struct resource gta01_bl_resources[] = {
 	[0] = {
-		.start	= GFISH_GPIO_BACKLIGHT,
-		.end	= GFISH_GPIO_BACKLIGHT,
+		.start	= M800_GPIO_BACKLIGHT,
+		.end	= M800_GPIO_BACKLIGHT,
 	},
 };
 
