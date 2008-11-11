@@ -25,4 +25,4 @@ obj-$(CONFIG_MACH_NEXCODER_2440) += mach-nexcoder.o
 obj-$(CONFIG_MACH_AT2440EVB) += mach-at2440evb.o
 obj-$(CONFIG_MACH_HXD8)		+= mach-hxd8.o
 obj-$(CONFIG_MACH_NEO1973_GTA02) += mach-gta02.o
-
+obj-$(CONFIG_MACH_M800)		+= mach-glofiish.o
