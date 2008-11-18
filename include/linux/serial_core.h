@@ -157,6 +157,9 @@
 
 #define PORT_S3C6400	83
 
+/* E-TEN glofiish */
+#define PORT_GFISH	84
+
 #ifdef __KERNEL__
 
 #include <linux/compiler.h>

@@ -1362,6 +1362,11 @@ config SERIAL_BFIN_SPORT
 	  To compile this driver as a module, choose M here: the
 	  module will be called bfin_sport_uart.
 
+config SERIAL_GFISH_MODEM
+	tristate "E-TEN glofiish GSM modem (via SPI)"
+	depends on ARM && ARCH_S3C2410
+	select SERIAL_CORE
+
 choice
 	prompt "Baud rate for Blackfin SPORT UART"
 	depends on SERIAL_BFIN_SPORT
