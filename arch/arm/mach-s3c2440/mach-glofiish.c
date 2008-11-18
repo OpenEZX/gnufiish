@@ -370,20 +370,23 @@ static struct spi_board_info glofiish_spi_board_info[] = {
 
 static void spi_gpio_cs(struct s3c2410_spigpio_info *spi, int csidx, int cs)
 {
+	/* GPD0 is a pure guess.  */
 	switch (cs) {
 	case BITBANG_CS_ACTIVE:
-		s3c2410_gpio_setpin(S3C2410_GPG3, 0);
+		s3c2410_gpio_setpin(S3C2410_GPD0, 0);
 		break;
 	case BITBANG_CS_INACTIVE:
-		s3c2410_gpio_setpin(S3C2410_GPG3, 1);
+		s3c2410_gpio_setpin(S3C2410_GPD0, 1);
 		break;
 	}
 }
 
 static struct s3c2410_spigpio_info spi_gpio_cfg = {
-	.pin_clk	= S3C2410_GPG7,
-	.pin_mosi	= S3C2410_GPG6,
-	.pin_miso	= S3C2410_GPG5,
+	/* GPD8..10 is next to the LCM signals, and configured to SPI
+	 * function mode, so we guess it's them! */
+	.pin_clk	= S3C2410_GPD10,
+	.pin_mosi	= S3C2410_GPD9,
+	.pin_miso	= S3C2410_GPD8,
 	.board_size	= ARRAY_SIZE(glofiish_spi_board_info),
 	.board_info	= glofiish_spi_board_info,
 	.chip_select	= &spi_gpio_cs,
