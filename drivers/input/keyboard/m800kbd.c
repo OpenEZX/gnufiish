@@ -225,8 +225,7 @@ static int m800kbd_probe(struct platform_device *pdev)
 	input_dev->id.vendor = 0x0001;
 	input_dev->id.product = 0x0001;
 	input_dev->id.version = 0x0100;
-	input_dev->cdev.dev = &pdev->dev;
-	input_dev->private = m800kbd;
+	input_dev->dev.parent = &pdev->dev;
 
 	input_dev->evbit[0] = BIT(EV_KEY) | BIT(EV_SW);
 	set_bit(SW_HEADPHONE_INSERT, input_dev->swbit);
