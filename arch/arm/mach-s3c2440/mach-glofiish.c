@@ -253,6 +253,24 @@ static struct resource m800_sdio_resources[] = {
 	},
 };
 
+static struct i2c_board_info glofiish_i2c_devs[] __initdata = {
+	{
+		/* CPLD */
+		I2C_BOARD_INFO("gf_cpld", 0x30),
+		.irq = M800_IRQ_CPLD_KEY,
+	},
+	{
+		/* FM Tuner */
+		I2C_BOARD_INFO("si4700", 0x20),
+		.irq = M800_IRQ_FMRADIO,
+	},
+	{
+		/* Audio Codec */
+		I2C_BOARD_INFO("ak4641", 0x24),
+	},
+	/* FIXME: Battery */
+};
+
 static struct platform_device *glofiish_devices[] __initdata = {
 	&s3c_device_usb,
 	&s3c_device_lcd,
@@ -654,6 +672,9 @@ static void __init glofiish_machine_init(void)
 	platform_device_register(&m800_modem_dev);
 	platform_device_register(&m800_button_dev);
 	platform_device_register(&s3c_device_spi_lcm);
+
+	i2c_register_board_info(0, glofiish_i2c_devs,
+				ARRAY_SIZE(glofiish_i2c_devs));
 
 	platform_add_devices(glofiish_devices, ARRAY_SIZE(glofiish_devices));
 
