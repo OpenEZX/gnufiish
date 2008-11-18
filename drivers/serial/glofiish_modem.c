@@ -57,8 +57,6 @@ NOTE: nSS1 seems to be interconnected to EINT16, in order to assure the AP gets 
 #include <linux/kernel.h>
 #include <linux/types.h>
 #include <linux/interrupt.h>
-#include <linux/tty.h>
-#include <linux/tty_flip.h>
 #include <linux/serial_core.h>
 #include <linux/serial.h>
 #include <linux/clk.h>
@@ -68,11 +66,11 @@ NOTE: nSS1 seems to be interconnected to EINT16, in order to assure the AP gets 
 #include <asm/irq.h>
 #include <asm/dma.h>
 
-#include <asm/plat-s3c24xx/regs-spi.h>
-#include <asm/arch/dma.h>
-#include <asm/arch/regs-gpio.h>
-#include <asm/arch/regs-clock.h>
-#include <asm/arch/glofiish.h>
+#include <plat/regs-spi.h>
+#include <mach/dma.h>
+#include <mach/regs-gpio.h>
+#include <mach/regs-clock.h>
+#include <mach/glofiish.h>
 
 struct gfish_modem {
 	struct platform_device *pdev;
@@ -308,16 +306,11 @@ static irqreturn_t s3c24xx_spi_irq(int irq, void *dev)
 	unsigned char ch, tx_ch;
 	struct uart_port *port = &gm->port;
 	struct circ_buf *xmit = NULL;
-	struct tty_struct *tty = NULL;
 
 	dev_dbg(&gm->pdev->dev, "SPI IRQ\n");
 
 	if (port && port->info) {
  		xmit = &port->info->xmit;
- 		if (port->info->tty)
-			tty = port->info->tty;
-		else
-			dev_dbg(&gm->pdev->dev, "no port->info->tty\n");
 	} else
 		dev_dbg(&gm->pdev->dev, "no port->info\n");
 
@@ -357,9 +350,6 @@ if (xmit) {
 	port->icount.rx++;
 	ch = readb(gm->spi.regs + S3C2410_SPRDAT);
 	uart_insert_char(port, 0, 0, ch, TTY_NORMAL);
-
-	if (tty)
-		tty_flip_buffer_push(tty);
 
 	dev_dbg(&gm->pdev->dev, "Rx: 0x%x Tx: 0x%x\n", ch, tx_ch);
 
