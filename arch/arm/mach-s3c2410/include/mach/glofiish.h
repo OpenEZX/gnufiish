@@ -1,8 +1,8 @@
 #ifndef _GLOFIISH_H
 #define _GLOFIISH_H
 
-#include <asm/arch/regs-gpio.h>
-#include <asm/arch/irqs.h>
+#include <mach/regs-gpio.h>
+#include <mach/irqs.h>
 
 #define M800_GPIO_GPS_nRESET	S3C2410_GPA1	/* ? */
 #define M800_GPIO_WLAN_LED	S3C2410_GPA12	/* WM6.1 registry */
