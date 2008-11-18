@@ -550,6 +550,33 @@ static struct platform_device m800_pm_bt_dev = {
 	.name		= "neo1973-pm-bt",
 };
 
+static struct platform_device m800_pm_gps_dev = {
+	.name		= "neo1973-pm-gps",
+};
+
+static struct resource m800_modem_resources[] = {
+	{
+		.flags	= IORESOURCE_IRQ,
+		.start	= M800_IRQ_GSM,
+		.end	= M800_IRQ_GSM,
+	}, {
+		.flags	= IORESOURCE_IRQ,
+		.start	= IRQ_SPI1,
+		.end	= IRQ_SPI1,
+	}, {
+		.flags	= IORESOURCE_MEM,
+		.start	= S3C2410_PA_SPI + 0x20,
+		.end	= S3C2410_PA_SPI + 0x34,
+	},
+};
+
+static struct platform_device m800_modem_dev = {
+	.name		= "gfish-modem",
+	.num_resources	= ARRAY_SIZE(m800_modem_resources),
+	.resource	= m800_modem_resources,
+};
+
+
 static void __init glofiish_map_io(void)
 {
 	s3c24xx_init_io(m800_iodesc, ARRAY_SIZE(m800_iodesc));
@@ -604,6 +631,8 @@ static void __init glofiish_machine_init(void)
 
 	platform_device_register(&gta01_bl_dev);
 	platform_device_register(&m800_pm_bt_dev);
+	platform_device_register(&m800_pm_gps_dev);
+	platform_device_register(&m800_modem_dev);
 	platform_device_register(&m800_button_dev);
 	platform_device_register(&s3c_device_spi_lcm);
 
