@@ -31,6 +31,9 @@
 #include <mach/gta02.h>
 #include <linux/pcf50633.h>
 
+#include <asm/arch/regs-gpioj.h>
+#include <asm/arch/glofiish.h>
+
 struct neo1973_pm_gps_data {
 	int power_was_on;
 };
@@ -298,6 +301,38 @@ static void gps_pwron_set(int on)
 		}
 		pcf50633_onoff_set(pcf50633_global,
 			PCF50633_REGULATOR_LDO5, on);
+	}
+
+	if (machine_is_m800()) {
+		/* We don't really know what all the various different
+		 * signals actually do.  But this is the sequence as observed
+		 * on WM6.1 using haret */
+		if (on) {
+			int i;
+			/* GPA14 is 0, set to 1, to 0 again */
+			s3c2410_gpio_setpin(S3C2410_GPB6, 1);	/* POWER? */
+			msleep(222);
+			s3c2410_gpio_setpin(S3C2410_GPA1, 0);	/* nRESET ? */
+			msleep(102);
+			s3c2410_gpio_setpin(S3C2410_GPA1, 1);	/* nRESET ? */
+			msleep(484);
+			s3c2410_gpio_setpin(S3C2410_GPC0, 1);
+			/* wait for GPJ3 == 1 */
+			for (i = 0; i < 10; i++) {
+				if (s3c2410_gpio_getpin(S3C2440_GPJ3))
+					break;
+				msleep(10);
+			}
+			if (i == 10)
+				printk(KERN_WARNING "GPJ3 never came up\n");
+			msleep(99);
+			s3c2410_gpio_setpin(S3C2410_GPC0, 0);
+		} else {
+			s3c2410_gpio_setpin(S3C2410_GPA6, 1);
+			msleep(99);
+			s3c2410_gpio_setpin(S3C2410_GPA6, 0);
+			s3c2410_gpio_setpin(S3C2410_GPB6, 0);
+		}
 	}
 }
 
@@ -646,6 +681,10 @@ static int __init gta01_pm_gps_probe(struct platform_device *pdev)
 		}
 		return sysfs_create_group(&pdev->dev.kobj, &gta02_gps_attr_group);
 	}
+
+	if (machine_is_m800())
+		return sysfs_create_group(&pdev->dev.kobj, &gta02_gps_attr_group);
+
 	return -1;
 }
 
