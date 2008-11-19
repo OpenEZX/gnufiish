@@ -67,6 +67,7 @@
 #include <mach/gta01.h>
 
 #include <plat/regs-serial.h>
+#include <plat/regs-iic.h>
 #include <plat/nand.h>
 #include <plat/devs.h>
 #include <plat/cpu.h>
@@ -253,20 +254,29 @@ static struct resource m800_sdio_resources[] = {
 	},
 };
 
+static struct s3c2410_platform_i2c m800_i2c_pdata __initdata = {
+	.flags		= 0,
+	.slave_addr	= 0x48,
+	.bus_freq	= 100*1000,
+	.max_freq	= 100*1000,
+	.sda_delay	= S3C2410_IICLC_FILTER_ON,
+};
+
 static struct i2c_board_info glofiish_i2c_devs[] __initdata = {
 	{
 		/* CPLD */
-		I2C_BOARD_INFO("gf_cpld", 0x30),
+		I2C_BOARD_INFO("gf_cpld", 0x18),
 		.irq = M800_IRQ_CPLD_KEY,
+		.flags = I2C_M_IGNORE_NAK,
 	},
 	{
 		/* FM Tuner */
-		I2C_BOARD_INFO("si4700", 0x20),
+		I2C_BOARD_INFO("si4700", 0x10),
 		.irq = M800_IRQ_FMRADIO,
 	},
 	{
 		/* Audio Codec */
-		I2C_BOARD_INFO("ak4641", 0x24),
+		I2C_BOARD_INFO("ak4641", 0x12),
 	},
 	/* FIXME: Battery */
 };
@@ -673,6 +683,7 @@ static void __init glofiish_machine_init(void)
 	platform_device_register(&m800_button_dev);
 	platform_device_register(&s3c_device_spi_lcm);
 
+	s3c_i2c0_set_platdata(&m800_i2c_pdata);
 	i2c_register_board_info(0, glofiish_i2c_devs,
 				ARRAY_SIZE(glofiish_i2c_devs));
 
