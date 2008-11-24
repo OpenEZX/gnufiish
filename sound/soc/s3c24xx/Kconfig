@@ -53,3 +53,13 @@ config SND_S3C24XX_SOC_LN2440SBC_ALC650
 	  Say Y if you want to add support for SoC audio on ln2440sbc
 	  with the ALC650.
 
+config SND_S3C24XX_SOC_GFISH_AK4641
+	tristate "SoC I2S Audio support for E-TEN glofiish"
+	depends on SND_S3C24XX_SOC && MACH_M800
+	select SND_S3C24XX_SOC_I2S
+	select SND_SOC_AK4643
+	help
+	  Say Y if you want to add support for SoC audio on an E-TEN
+	  glofiish with the AK4641.
+
+
