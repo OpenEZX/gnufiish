@@ -56,6 +56,7 @@
 #include <mach/regs-irq.h>
 #include <mach/regs-gpio.h>
 #include <mach/regs-gpioj.h>
+#include <mach/leds-gpio.h>
 #include <mach/fb.h>
 #include <mach/mci.h>
 #include <mach/ts.h>
@@ -279,18 +280,6 @@ static struct i2c_board_info glofiish_i2c_devs[] __initdata = {
 		I2C_BOARD_INFO("ak4641", 0x12),
 	},
 	/* FIXME: Battery */
-};
-
-static struct platform_device *glofiish_devices[] __initdata = {
-	&s3c_device_usb,
-	&s3c_device_lcd,
-	&s3c_device_wdt,
-	&s3c_device_i2c0,
-	&s3c_device_iis,
-	&s3c_device_sdi,
-	&s3c_device_usbgadget,
-	&s3c_device_nand,
-	&s3c_device_ts,
 };
 
 static struct s3c2410_nand_set glofiish_nand_sets[] = {
@@ -558,6 +547,21 @@ static struct platform_device gta02_button_dev = {
 };
 #endif
 
+/* LED for the keyboard backlight */
+static struct s3c24xx_led_platdata m800_kbd_led_pdata = {
+	.name		= "keyboard_backlight",
+	.gpio		= M800_GPIO_KBDLIGHT,
+	.def_trigger	= "",
+};
+
+static struct platform_device m800_kbd_led = {
+	.name		= "s3c24xx_led",
+	.id		= 1,
+	.dev		= {
+		.platform_data	= &m800_kbd_led_pdata,
+	},
+};
+
 /* USB */
 static struct s3c2410_hcd_info glofiish_usb_info = {
 	.port[0]	= {
@@ -654,6 +658,19 @@ static int __init hardware_ecc_setup(char *str)
 		strlcpy(hardware_ecc_str, str, sizeof(hardware_ecc_str));
 	return 1;
 }
+
+static struct platform_device *glofiish_devices[] __initdata = {
+	&s3c_device_usb,
+	&s3c_device_lcd,
+	&s3c_device_wdt,
+	&s3c_device_i2c0,
+	&s3c_device_iis,
+	&s3c_device_sdi,
+	&s3c_device_usbgadget,
+	&s3c_device_nand,
+	&s3c_device_ts,
+	&m800_kbd_led,
+};
 
 __setup("hardware_ecc=", hardware_ecc_setup);
 
