@@ -36,7 +36,7 @@
 #define AK4641_EQHI		0x12
 #define AK4641_BTIF		0x13
 
-//#define AK4641_CACHEREGNUM 	0x13
+#define AK4641_CACHEREGNUM 	0x14
 
 struct ak4641_setup_data {
 	int            i2c_bus;

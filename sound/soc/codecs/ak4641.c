@@ -53,7 +53,7 @@ static inline unsigned int ak4641_read_reg_cache(struct snd_soc_codec *codec,
 	unsigned int reg)
 {
 	u16 *cache = codec->reg_cache;
-	if (reg >= AK6415_CACHEREGNUM)
+	if (reg >= AK4641_CACHEREGNUM)
 		return -1;
 	return cache[reg];
 }
@@ -212,9 +212,11 @@ static const struct snd_kcontrol_new ak4641_hpr_control =
 static const struct snd_kcontrol_new ak4641_mono2_control =
 	SOC_DAPM_SINGLE("Switch", AK4641_SIG1, 0, 1, 0);
 
+#if 0
 /* Line out switch */
 static const struct snd_kcontrol_new ak4535_line_control =
 	SOC_DAPM_SINGLE("Switch", AK5351_SIG2, 6, 1, 0);
+#endif
 
 /* ak4535 dapm widgets */
 static const struct snd_soc_dapm_widget ak4641_dapm_widgets[] = {
@@ -449,7 +451,6 @@ static int ak4641_set_bias_level(struct snd_soc_codec *codec,
 
 /* FIXME: Add DAI for the bluetooth/voice part */
 struct snd_soc_dai ak4641_dai = {
-{
 	.name = "AK4641 HiFi",
 	.playback = {
 		.stream_name = "Playback",
