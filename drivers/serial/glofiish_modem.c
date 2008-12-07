@@ -53,6 +53,7 @@ NOTE: nSS1 seems to be interconnected to EINT16, in order to assure the AP gets 
 */
 
 #define DEBUG
+#define USE_DMA
 
 #include <linux/kernel.h>
 #include <linux/types.h>
@@ -61,6 +62,7 @@ NOTE: nSS1 seems to be interconnected to EINT16, in order to assure the AP gets 
 #include <linux/serial.h>
 #include <linux/clk.h>
 #include <linux/platform_device.h>
+#include <linux/dma-mapping.h>
 
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -71,6 +73,38 @@ NOTE: nSS1 seems to be interconnected to EINT16, in order to assure the AP gets 
 #include <mach/regs-gpio.h>
 #include <mach/regs-clock.h>
 #include <mach/glofiish.h>
+
+enum spi_state {
+	STATE_NONE,
+	STATE_IDLE,		/* idle */
+	STATE_WAIT_nSS1,	/* waiting for nSS1 after GPA16 trigger */
+	STATE_WAIT_CMD,		/* waiting for an incoming CMD packet */
+	STATE_RCV_CMD,		/* receiving bytes of CMD packet */
+	STATE_WAIT_RX,		/* waiting for an incoming RX packet */
+	STATE_RX,		/* receiving bytes of RX packet */
+	STATE_WAIT_TX,		/* waiting for starting TX packet */
+	STATE_TX,		/* transmitting bytes of TX packet */
+};
+
+static const char *state_names[] = {
+	[STATE_NONE]	= "NONE",
+	[STATE_IDLE]	= "IDLE",
+	[STATE_WAIT_nSS1]= "WAIT_nSS1",
+	[STATE_WAIT_CMD]= "WAIT_CMD",
+	[STATE_RCV_CMD]	= "RCV_CMD",
+	[STATE_WAIT_RX]	= "WAIT_RX",
+	[STATE_RX]	= "RX",
+	[STATE_WAIT_TX]	= "WAIT_TX",
+	[STATE_TX]	= "TX",
+};
+
+static inline const char *state_name(enum spi_state state)
+{
+	if (state > STATE_TX)
+		return "UNKNOWN";
+	else
+		return state_names[state];
+}
 
 struct gfish_modem {
 	struct platform_device *pdev;
@@ -83,6 +117,16 @@ struct gfish_modem {
 		unsigned int dmach;
 		struct clk *clk;
 		unsigned int irq;
+		enum spi_state state;
+		spinlock_t lock;
+
+		unsigned char rx_buf[1024];
+		unsigned int rx_len;
+		unsigned int rx_idx;
+
+		unsigned char tx_buf[1024];
+		unsigned int tx_len;
+		unsigned int tx_idx;
 #if 0
 		/* buffers */
 		struct circ_buf tx_buf;
@@ -97,6 +141,7 @@ struct gfish_modem {
 #define port_to_modem(x)	container_of((x), struct gfish_modem, port)
 
 /***********************************************************************
+
  * UART part
  ***********************************************************************/
 
@@ -113,7 +158,7 @@ static void gfish_modem_pm(struct uart_port *port,
 static unsigned int gfish_modem_tx_empty(struct uart_port *port)
 {
 	struct gfish_modem *gm = port_to_modem(port);
-	unsigned int spsta = readb(gm->spi.regs + S3C2410_SPSTA);
+	//unsigned int spsta = readb(gm->spi.regs + S3C2410_SPSTA);
 
 	dev_dbg(&gm->pdev->dev, "tx_empty()=1\n");
 	//return (spsta & S3C2410_SPSTA_READY);
@@ -144,7 +189,7 @@ static void gfish_modem_stop_tx(struct uart_port *port)
 	struct gfish_modem *gm = port_to_modem(port);
 
 	dev_dbg(&gm->pdev->dev, "stop_tx\n");
-	s3c2410_gpio_setpin(gm->gpio_req, 0);
+	//s3c2410_gpio_setpin(gm->gpio_req, 0);
 }
 
 static void gfish_modem_start_tx(struct uart_port *port)
@@ -152,7 +197,9 @@ static void gfish_modem_start_tx(struct uart_port *port)
 	struct gfish_modem *gm = port_to_modem(port);
 
 	dev_dbg(&gm->pdev->dev, "start_tx\n");
-	s3c2410_gpio_setpin(gm->gpio_req, 1);
+	/* Assert GPA16 and thus trigger the CMD SPI RX stage
+	   and further operations */
+	//s3c2410_gpio_setpin(gm->gpio_req, 1);
 }
 
 static void gfish_modem_stop_rx(struct uart_port *port)
@@ -282,6 +329,238 @@ static struct uart_driver gm_uart_driver = {
  * SPI slave driver 
  ***********************************************************************/
 
+static void hexdump(unsigned char *data, int len)
+{
+	int i;
+	for (i = 0; i < len; i++)
+		printk("%02x ", data[i]);
+	printk("\n");
+}
+
+static void rx_complete(struct gfish_modem *gm)
+{
+	dev_dbg(&gm->pdev->dev, "rx_complete: ");
+	hexdump(gm->spi.rx_buf, gm->spi.rx_len);
+}
+
+static void tx_complete(struct gfish_modem *gm)
+{
+	dev_dbg(&gm->pdev->dev, "tx_complete: ");
+	hexdump(gm->spi.tx_buf, gm->spi.tx_len);
+}
+
+static void set_gsm_spi_req(struct gfish_modem *gm, int on)
+{
+	s3c2410_gpio_setpin(gm->gpio_req, on);
+}
+
+static int prepare_dma(struct gfish_modem *gm, int tx);
+
+/* configure the SPI controller based on the current state */
+static int config_spi(struct gfish_modem *gm)
+{
+	u_int8_t smod = S3C2410_SPCON_SMOD_INT;
+	/* initialize length to 4 */
+	u_int16_t len = 4;
+
+	dev_dbg(&gm->pdev->dev, "config_spi(state=%s)\n",
+		state_name(gm->spi.state));
+#ifdef USE_DMA
+	smod = S3C2410_SPCON_SMOD_DMA;
+#endif
+
+	switch (gm->spi.state) {
+	case STATE_WAIT_RX:
+		/* determine read length from last command */
+		len = (gm->spi.rx_buf[3] << 8 | gm->spi.rx_buf[4]);
+		dev_dbg(&gm->pdev->dev, "len=%d+4\n", len);
+		/* add four bytes for the header */
+		len += 4;
+		if (len > sizeof(gm->spi.rx_buf)) {
+			dev_err(&gm->pdev->dev,
+				"cannot read %d bytes, limiting to %d\n",
+				len, sizeof(gm->spi.rx_buf));
+			len = sizeof(gm->spi.rx_buf);
+		}
+		/* fallthrough */
+	case STATE_NONE:
+	case STATE_WAIT_CMD:
+	case STATE_WAIT_nSS1:
+		/* make sure we read bytes until we have reached this length */
+		gm->spi.rx_len = len;
+		/* read two bytes garbage */
+		writeb(S3C2410_SPCON_TAGD, gm->spi.regs + S3C2410_SPCON);
+		readb(gm->spi.regs + S3C2410_SPRDAT);
+		readb(gm->spi.regs + S3C2410_SPRDAT);
+		/* enable interrupt mode */
+		writeb(S3C2410_SPCON_TAGD|smod, gm->spi.regs + S3C2410_SPCON);
+#ifdef USE_DMA
+		prepare_dma(gm, 0);
+#endif
+		/* Assert GPA16 */
+		set_gsm_spi_req(gm, 1);
+		/* ... we will generate SPI interrupts or DMA completion events
+		 * and continue there */
+		break;
+	case STATE_WAIT_TX:
+		/* the caller has initialized spi.tx_len and tx_buf */
+		/* enable interrupt mode */
+		writeb(smod, gm->spi.regs + S3C2410_SPCON);
+#ifdef USE_DMA
+		prepare_dma(gm, 1);
+#endif
+		/* Assert GPA16 */
+		set_gsm_spi_req(gm, 1);
+		/* ... we will generate SPI interrupts and continue there */
+		break;
+	default:
+		dev_dbg(&gm->pdev->dev, "can't configure state %s\n",
+			state_name(gm->spi.state));
+	}
+	
+	return 0;
+}
+
+#ifdef USE_DMA
+static void dma_done_callback(struct s3c2410_dma_chan *dma_ch,
+			      void *buf_id, int size,
+			      enum s3c2410_dma_buffresult result)
+{
+	struct gfish_modem *gm = buf_id;
+	struct device *dev = &gm->pdev->dev;
+	
+	dev_dbg(dev, "SPI DMA done old_state=%s size=%d\n", 
+		state_name(gm->spi.state), size);
+
+	if (result != S3C2410_RES_OK) {
+		dev_dbg(dev, "DMA FAILED: result=0x%x\n", result);
+		return;
+	}
+
+	switch (gm->spi.state) {
+	case STATE_WAIT_TX:
+		//dma_unmap_single(dev, FIXME, gm->spi.tx_len, DMA_TO_DEVICE);
+		gm->spi.tx_idx = 0;
+		/* once finished, de-assert GPA16 */
+		set_gsm_spi_req(gm, 0);
+		/* FIXME: notify caller about transmitted data */
+		tx_complete(gm);
+		/* re-start with reading four bytes */
+		gm->spi.state = STATE_WAIT_RX;
+		break;
+	case STATE_WAIT_RX:
+	case STATE_WAIT_CMD:
+		//dma_unmap_single(dev, FIXME, gm->spi.rx_len, DMA_FROM_DEVICE);
+		/* reset command index for next transfer */
+		gm->spi.rx_idx = 0;
+		/* de-assert GPA16 */
+		set_gsm_spi_req(gm, 0);
+
+		//if (gm->spi.rx_len > 4) {
+			/* FIXME: process received data */
+			rx_complete(gm);
+		//}
+		if (gm->spi.rx_buf[0] != 0x00)
+			dev_dbg(dev, "first byte of buffer not 0x00?\n");
+
+		switch (gm->spi.rx_buf[1]) {
+		case 0x00:	/* read from modem */
+			gm->spi.state = STATE_WAIT_RX;
+			break;
+		case 0x01:	/* write to modem */
+			gm->spi.state = STATE_WAIT_TX;
+			break;
+		case 0x02:	/* finish */
+			gm->spi.state = STATE_NONE;
+			break;
+		}
+		break;
+	default:
+		dev_dbg(dev, "state %s not valid for DMA\n",
+			state_name(gm->spi.state));
+		return;
+		break;
+	}
+	/* configure SPI controller based on new gm->spi.state */
+	config_spi(gm);
+}
+
+static void dma_setup(struct gfish_modem *gm, enum s3c2410_dmasrc source)
+{
+	struct device *dev = &gm->pdev->dev;
+	static enum s3c2410_dmasrc last_source = -1;
+	static int setup_ok;
+	unsigned long devaddr;
+
+	dev_dbg(dev, "dma_setup(source=%u)\n", source);
+
+	if (last_source == source) {
+		dev_dbg(dev, "dma_setup(): skipping, same as last source\n");
+		return;
+	}
+
+	last_source = source;
+
+	if (source == S3C2410_DMASRC_HW) 
+		devaddr = gm->spi.ioarea->start + S3C2410_SPRDAT;
+	else
+		devaddr = gm->spi.ioarea->start + S3C2410_SPTDAT;
+
+	dev_dbg(dev, "dma_setup(): devaddr = 0x%08lx\n", devaddr);
+
+	/* '3' means: fixed address, APB */
+	s3c2410_dma_devconfig(gm->spi.dmach, source, 3, devaddr);
+
+	if (!setup_ok) {
+		dev_dbg(dev, "dma_setup(): first-time setup\n");
+		/* '1' means byte-wise transfers */
+		s3c2410_dma_config(gm->spi.dmach, 1,
+			(S3C2410_DCON_HANDSHAKE | S3C2410_DCON_HWTRIG |
+			 S3C2410_DCON_CH3_SPI));
+		s3c2410_dma_set_buffdone_fn(gm->spi.dmach,
+					    dma_done_callback);
+		s3c2410_dma_setflags(gm->spi.dmach, S3C2410_DMAF_AUTOSTART);
+		setup_ok = 1;
+	}
+}
+
+static int prepare_dma(struct gfish_modem *gm, int tx)
+{
+	struct device *dev = &gm->pdev->dev;
+	dma_addr_t data;
+	int rc, size;
+
+	dma_setup(gm, tx ? S3C2410_DMASRC_MEM : S3C2410_DMASRC_HW);
+	s3c2410_dma_ctrl(gm->spi.dmach, S3C2410_DMAOP_FLUSH);
+
+	if (tx) {
+		data = dma_map_single(dev, gm->spi.tx_buf, gm->spi.tx_len,
+				      DMA_TO_DEVICE);
+		size = gm->spi.tx_len;
+	} else {
+		data = dma_map_single(dev, gm->spi.rx_buf, gm->spi.rx_len,
+				      DMA_FROM_DEVICE);
+		size = gm->spi.rx_len;
+	}
+	dev_dbg(dev, "prepare_dma(tx=%d): data=0x%08x size=%d\n",
+		tx, data, size);
+
+	rc = s3c2410_dma_enqueue(gm->spi.dmach, gm, data, size);
+	if (rc < 0)
+		dev_err(dev, "dma_enqueue failed with %d\n", rc);
+
+	rc = s3c2410_dma_ctrl(gm->spi.dmach, S3C2410_DMAOP_START);
+	if (rc < 0)
+		dev_err(dev, "dma_ctrl(START) failed with %d\n", rc);
+
+	return rc;
+}
+
+static struct s3c2410_dma_client gm_dma_client = {
+	.name	= "gfish-modem-dma",
+};
+#endif /* USE_DMA */
+
 static int s3c24xx_spi_slave_init(struct gfish_modem *gf)
 {
 	dev_dbg(&gf->pdev->dev, "slave_init()\n");
@@ -292,37 +571,136 @@ static int s3c24xx_spi_slave_init(struct gfish_modem *gf)
 	s3c2410_gpio_cfgpin(S3C2410_GPD10, S3C2440_GPD10_nSPICLK1);
 	s3c2410_gpio_cfgpin(S3C2410_GPG3, S3C2440_GPG3_nSS1);
 
-	writeb(0x00, gf->spi.regs + S3C2410_SPCON);
+	//writeb(0x00, gf->spi.regs + S3C2410_SPCON);
 	//writeb(S3C2410_SPPIN_KEEP, gf->spi.regs + S3C2410_SPPIN);
 
 	return 0;
 }
 
-/* This interrupt is called by the SPI controller */
-static irqreturn_t s3c24xx_spi_irq(int irq, void *dev)
+/* test command: transmit ATZ and wait for response */
+const char atz[] = { 'A', 'T', 'Z', '\r', 0xff, 0xff };
+static void tx_atz(struct gfish_modem *gm)
 {
-	struct gfish_modem *gm = dev;
+	/* put ATZ command in transmit buffer */
+	memcpy(gm->spi.tx_buf, atz, sizeof(atz));
+	gm->spi.tx_len = sizeof(atz);
+	/* initialize state and SPI controller + ask modem via GPA16 */
+	gm->spi.state = STATE_WAIT_nSS1;
+	config_spi(gm);
+}
+
+/* This interrupt is called by the SPI controller */
+static irqreturn_t s3c24xx_spi_irq(int irq, void *priv)
+{
+	struct gfish_modem *gm = priv;
+	struct device *dev = &gm->pdev->dev;
 	unsigned int spsta = readb(gm->spi.regs + S3C2410_SPSTA);
+#ifndef USE_DMA
 	unsigned char ch, tx_ch;
 	struct uart_port *port = &gm->port;
 	struct circ_buf *xmit = NULL;
+	u_int8_t byte;
+#endif
 
-	dev_dbg(&gm->pdev->dev, "SPI IRQ\n");
+	dev_dbg(dev, "SPI IRQ old_state=%s spsta=0x%x\n",
+		state_name(gm->spi.state), spsta);
 
+	if (spsta & S3C2410_SPSTA_DCOL) {
+		dev_dbg(dev, "data-collision\n");
+		goto irq_done;
+	}
+
+#ifndef USE_DMA
+	switch (gm->spi.state) {
+	case STATE_WAIT_RX:
+		/* received 1st character of RX transfer */
+		byte = readb(gm->spi.regs + S3C2410_SPRDAT);
+		gm->spi.rx_buf[gm->spi.rx_idx++] = byte;
+		dev_dbg(dev, "received first RX byte %02x\n", byte);
+		gm->spi.state = STATE_RX;
+		break;
+	case STATE_WAIT_CMD:
+		/* received 1st character of CMD transfer */
+		byte = readb(gm->spi.regs + S3C2410_SPRDAT);
+		gm->spi.rx_buf[gm->spi.rx_idx++] = byte;
+		dev_dbg(dev, "received first CMD byte %02x\n", byte);
+		gm->spi.state = STATE_RCV_CMD;
+		break;
+	case STATE_RCV_CMD:
+	case STATE_RX:
+		/* received 2nd...4th character of CMD or RX transfer */
+		byte = readb(gm->spi.regs + S3C2410_SPRDAT);
+		gm->spi.rx_buf[gm->spi.rx_idx++] = byte;
+		dev_dbg(dev, "received 2nd... CMD/RX byte %02x\n", byte);
+		if (gm->spi.rx_idx == gm->spi.rx_len) {
+			/* reset command index for next transfer */
+			gm->spi.rx_idx = 0;
+			/* de-assert GPA16 */
+			set_gsm_spi_req(gm, 0);
+
+			if (gm->spi.rx_len > 4) {
+				/* FIXME: process received data */
+				rx_complete(gm);
+			}
+			if (gm->spi.rx_buf[0] != 0x00)
+				dev_dbg(dev, "first byte of buffer not 0x00?\n");
+
+			switch (gm->spi.rx_buf[1]) {
+			case 0x00:	/* read from modem */
+				gm->spi.state = STATE_WAIT_RX;
+				break;
+			case 0x01:	/* write to modem */
+				gm->spi.state = STATE_WAIT_TX;
+				break;
+			case 0x02:	/* finish */
+				gm->spi.state = STATE_NONE;
+				break;
+			}
+			/* configure SPI controller based on new gm->spi.state */
+			config_spi(gm);
+		}
+		break;
+	case STATE_WAIT_TX:
+		if (!(spsta & S3C2410_SPSTA_READY)) {
+			dev_dbg(dev, "spi not ready for tx?\n");
+			goto irq_done;
+		}
+		/* send 1st byte of TX transfer */
+		byte = gm->spi.tx_buf[gm->spi.tx_idx++];
+		writeb(byte, gm->spi.regs + S3C2410_SPTDAT);
+		dev_dbg(dev, "wrote first TX byte %02x\n", byte);
+		gm->spi.state = STATE_TX;
+		break;
+	case STATE_TX:
+		if (!(spsta & S3C2410_SPSTA_READY)) {
+			dev_dbg(dev, "spi not ready for tx?\n");
+			goto irq_done;
+		}
+		/* send 2nd... byte of TX transfer */
+		byte = gm->spi.tx_buf[gm->spi.tx_idx++];
+		writeb(byte, gm->spi.regs + S3C2410_SPTDAT);
+		dev_dbg(dev, "wrote 2nd... TX byte %02x\n", byte);
+		if (gm->spi.tx_idx == gm->spi.tx_len) {
+			gm->spi.tx_idx = 0;
+			/* once finished, de-assert GPA16 */
+			set_gsm_spi_req(gm, 0);
+			/* FIXME: notify caller about transmitted data */
+			tx_complete(gm);
+			/* re-start with reading four bytes */
+			gm->spi.state = STATE_WAIT_RX;
+		}
+		break;
+	default:
+		dev_dbg(dev, "not sure what to do from state %s\n",
+			state_name(gm->spi.state));
+	}
+#endif /* ! USE_DMA */
+
+#if 0
 	if (port && port->info) {
  		xmit = &port->info->xmit;
 	} else
-		dev_dbg(&gm->pdev->dev, "no port->info\n");
-
-	if (spsta & S3C2410_SPSTA_DCOL) {
-		dev_dbg(&gm->pdev->dev, "data-collision\n");
-		goto irq_done;
-	}
-
-	if (!(spsta & S3C2410_SPSTA_READY)) {
-		dev_dbg(&gm->pdev->dev, "spi not ready for tx?\n");
-		goto irq_done;
-	}
+		dev_dbg(dev, "no port->info\n");
 
 if (xmit) {
 
@@ -351,7 +729,8 @@ if (xmit) {
 	ch = readb(gm->spi.regs + S3C2410_SPRDAT);
 	uart_insert_char(port, 0, 0, ch, TTY_NORMAL);
 
-	dev_dbg(&gm->pdev->dev, "Rx: 0x%x Tx: 0x%x\n", ch, tx_ch);
+	dev_dbg(dev, "Rx: 0x%x Tx: 0x%x\n", ch, tx_ch);
+#endif
 
 irq_done:
 	return IRQ_HANDLED;
@@ -380,24 +759,58 @@ int gfish_modem_transceive(struct gfish_modem *gm, const u_int8_t *tx,
 }
 #endif
 
+/* commands as sent by the modem.  They basically tell the
+ * application processor what to do.  So 'READ' means read
+ * by the AP from the GSM modem */
+#define GFISH_SPI_CMD_DO_READ	0x0000
+#define GFISH_SPI_CMD_DO_WRITE	0x0001
+#define GFISH_SPI_CMD_DONE	0x0002
+
+struct gfish_spi_cmd {
+	u_int16_t	cmd;
+	u_int16_t	dummy;
+};
+
 /* This interrupt is called every every time the modem asserts nSS1
  * and thereby activates the SPI transfer with the application processor */
-static irqreturn_t gfish_modem_irq(int irq, void *dev)
+static irqreturn_t gfish_modem_irq(int irq, void *priv)
 {
-	struct gfish_modem *gm = dev;
+	struct gfish_modem *gm = priv;
+	struct device *dev = &gm->pdev->dev;
 	int level = s3c2410_gpio_getpin(S3C2410_GPG8);
 
-	dev_dbg(&gm->pdev->dev, "Modem nSS1 IRQ: %d\n", level ? 1 : 0);
+	dev_dbg(dev, "Modem nSS1 IRQ(%u) state(%s)\n",
+		level ? 1 : 0, state_name(gm->spi.state));
 
-	/* Once this interrupt is called, we have to keep transmitting
-	 * and receiving octets until the SPI master de-asserts nSS1 */
+	if (level) {
+		dev_dbg(dev, "ignoring nSS1 release\n");
+		goto out;
+	}
 
+	switch (gm->spi.state) {
+	case STATE_WAIT_nSS1:
+		/* we've been waiting for nSS1 after a AP-initiated
+		 * communication start */
+		gm->spi.state = STATE_WAIT_CMD;
+		/* do not config_spi, as we've already been config'ed */
+		break;
+	default:
+		config_spi(gm);	
+		break;
+	}
+out:
 	return IRQ_HANDLED;
 }
 
-static struct s3c2410_dma_client gm_dma_client = {
-	.name	= "gfish-modem",
-};
+static ssize_t set_txatz(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct gfish_modem *gm = dev_get_drvdata(dev);
+	tx_atz(gm);
+	return count;
+}
+
+static DEVICE_ATTR(tx_atz, S_IWUSR | S_IRUGO,
+		   NULL, set_txatz);
 
 static int __init gm_probe(struct platform_device *pdev)
 {
@@ -486,22 +899,30 @@ static int __init gm_probe(struct platform_device *pdev)
 		goto out_irq;
 	}
 
-#ifdef USE_DMA
-	/* FIXME */
-	s3c2410_dma_xxx(gm->spi.dmach, &gm_dma_client);
-	{
+	rc = device_create_file(&pdev->dev, &dev_attr_tx_atz);
+	if (rc < 0) {
+		dev_err(&pdev->dev, "failed to add sysfs file\n");
 		goto out_irq2;
+	}
+
+#ifdef USE_DMA
+	rc = s3c2410_dma_request(gm->spi.dmach, &gm_dma_client, NULL);
+	if (rc < 0) {
+		dev_err(&pdev->dev, "failed to request DMA channel\n");
+		goto out_file;
 	}
 #endif
 
 	s3c24xx_spi_slave_init(gm);
 
-	return rc;
+	return 0;
 
 out_dma:
 #ifdef USE_DMA
 	s3c2410_dma_free(gm->spi.dmach, &gm_dma_client);
 #endif
+out_file:
+	device_remove_file(&pdev->dev, &dev_attr_tx_atz);
 out_irq2:
 	free_irq(gm->spi.irq, gm);
 out_irq:
@@ -533,10 +954,12 @@ static int gm_remove(struct platform_device *pdev)
 	s3c2410_gpio_setpin(gm->gpio_req, 0);
 
 #ifdef USE_DMA
+	s3c2410_dma_ctrl(gm->spi.dmach, S3C2410_DMAOP_FLUSH);
 	s3c2410_dma_free(gm->spi.dmach, &gm_dma_client);
 #endif
+	device_remove_file(&pdev->dev, &dev_attr_tx_atz);
 	free_irq(gm->spi.irq, gm);
-	disable_irq_wake(gm->irq);
+	//disable_irq_wake(gm->irq);
 	free_irq(gm->irq, gm);
 	uart_remove_one_port(&gm_uart_driver, &gm->port);
 	uart_unregister_driver(&gm_uart_driver);
