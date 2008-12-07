@@ -158,7 +158,7 @@ static int gfish_hifi_hw_free(struct snd_pcm_substream *substream)
 	DBG("Entered %s\n", __func__);
 
 	/* disable the PLL */
-	return snd_soc_dai_set_pll(codec_dai, WM8753_PLL1, 0, 0);
+	//return snd_soc_dai_set_pll(codec_dai, WM8753_PLL1, 0, 0);
 }
 
 /*
@@ -233,6 +233,7 @@ static struct snd_soc_ops gfish_voice_ops = {
 	.hw_free = gfish_voice_hw_free,
 };
 
+#if 0
 static int neo1973_scenario;
 
 static int neo1973_get_scenario(struct snd_kcontrol *kcontrol,
@@ -392,10 +393,11 @@ static const struct snd_kcontrol_new wm8753_neo1973_controls[] = {
 	SOC_ENUM_EXT("Neo Mode", neo_scenario_enum[0],
 		neo1973_get_scenario, neo1973_set_scenario),
 };
+#endif
 
 /*
- * This is an example machine initialisation for a wm8753 connected to a
- * neo1973 II. It is missing logic to detect hp/mic insertions and logic
+ * This is an example machine initialisation for a ak4641 connected to a
+ * glofiish M800. It is missing logic to detect hp/mic insertions and logic
  * to re-route the audio in such an event.
  */
 static int gfish_ak4641_init(struct snd_soc_codec *codec)
@@ -404,6 +406,7 @@ static int gfish_ak4641_init(struct snd_soc_codec *codec)
 
 	DBG("Entered %s\n", __func__);
 
+#if 0
 	/* set up NC codec pins */
 	snd_soc_dapm_nc_pin(codec, "LOUT2");
 	snd_soc_dapm_nc_pin(codec, "ROUT2");
@@ -432,7 +435,8 @@ static int gfish_ak4641_init(struct snd_soc_codec *codec)
 	err = snd_soc_dapm_add_routes(codec, dapm_routes,
 				      ARRAY_SIZE(dapm_routes));
 
-	snd_soc_dapm_sync(codec);
+#endif
+	//snd_soc_dapm_sync(codec);
 	return 0;
 }
 
@@ -460,10 +464,11 @@ static struct snd_soc_dai_link gfish_dai[] = {
 	.name = "AK4641",
 	.stream_name = "AK4641 HiFi",
 	.cpu_dai = &s3c24xx_i2s_dai,
-	.codec_dai = &ak4641_dai[AK4641_DAI_HIFI],
+	.codec_dai = &ak4641_dai,
 	.init = gfish_ak4641_init,
 	.ops = &gfish_hifi_ops,
 },
+#if 0
 { /* Voice via BT */
 	.name = "Bluetooth",
 	.stream_name = "Voice",
@@ -471,6 +476,7 @@ static struct snd_soc_dai_link gfish_dai[] = {
 	.codec_dai = &ak4641_dai[AK4641_DAI_VOICE],
 	.ops = &gfish_voice_ops,
 },
+#endif
 };
 
 static struct snd_soc_machine gfish_m800 = {
@@ -484,7 +490,7 @@ static struct ak4641_setup_data soc_codec_data_ak4641_gfish = {
 	.i2c_address = 0x12,
 };
 
-static struct snd_soc_device neo1973_snd_devdata = {
+static struct snd_soc_device gfish_snd_devdata = {
 	.machine = &gfish_m800,
 	.platform = &s3c24xx_soc_platform,
 	.codec_dev = &soc_codec_dev_ak4641,
@@ -493,7 +499,7 @@ static struct snd_soc_device neo1973_snd_devdata = {
 
 static struct platform_device *gfish_snd_device;
 
-static int __init gfishinit(void)
+static int __init gfish_init(void)
 {
 	int ret;
 

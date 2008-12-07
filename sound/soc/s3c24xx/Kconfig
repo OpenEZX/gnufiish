@@ -57,7 +57,7 @@ config SND_S3C24XX_SOC_GFISH_AK4641
 	tristate "SoC I2S Audio support for E-TEN glofiish"
 	depends on SND_S3C24XX_SOC && MACH_M800
 	select SND_S3C24XX_SOC_I2S
-	select SND_SOC_AK4643
+	select SND_SOC_AK4641
 	help
 	  Say Y if you want to add support for SoC audio on an E-TEN
 	  glofiish with the AK4641.
