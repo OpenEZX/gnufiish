@@ -279,7 +279,10 @@ static struct i2c_board_info glofiish_i2c_devs[] __initdata = {
 		/* Audio Codec */
 		I2C_BOARD_INFO("ak4641", 0x12),
 	},
-	/* FIXME: Battery */
+	{
+		/* Battery (unknown chip) */
+		I2C_BOARD_INFO("gf_batt", 0x2f),
+	},
 };
 
 static struct s3c2410_nand_set glofiish_nand_sets[] = {
