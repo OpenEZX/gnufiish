@@ -118,11 +118,83 @@ static int ak4641_sync(struct snd_soc_codec *codec)
 	return r;
 };
 
+/* Equalizer Controls */
+
+#define AK4641_EQUAL(xname, xindex) \
+{ .iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, .index = xindex, \
+  .info = snd_info_equalizer, .get = snd_get_equalizer, \
+  .put = snd_put_equalizer }
+
+static int snd_info_equalizer(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	/* Stepsize is 1.5dB, ALSA doesn't do non-integral steps */
+	uinfo->value.integer.min = -7;	/* -10.5dB */
+	uinfo->value.integer.max = 8;	/* +12dB */
+
+	return 0;
+}
+
+static int snd_get_equalizer(struct snd_kcontrol *kcontrol,
+			     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct ak4641_priv *ak4641 = codec->private_data;
+	u_int16_t reg = AK4641_EQLO;
+	u_int8_t val;
+	int idx = ucontrol->id.index;
+
+	if (idx > 4)
+		return -EINVAL;
+
+	reg += idx/2;
+	val = ak4641_read_reg_cache(codec, reg);
+
+	if (idx % 2)
+		val >> 4;
+	else
+		val &= 0x0f;
+
+	ucontrol->value.integer.value[0] = 8 - val;
+	return 0;
+}
+
+static int snd_put_equalizer(struct snd_kcontrol *kcontrol,
+			     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct ak4641_priv *ak4641 = codec->private_data;
+	u_int16_t reg = AK4641_EQLO;
+	u_int8_t val, bits;
+	int idx = ucontrol->id.index;
+
+	if (idx > 4)
+		return -EINVAL;
+
+	reg += idx/2;
+	val = ak4641_read_reg_cache(codec, reg);
+	bits = ucontrol->value.integer.value[0] - 8;
+
+	if (idx % 2) {
+		val &= 0x0f;	
+		val |= (bits << 4);
+	} else {
+		val &= 0xf0;
+		val |= bits;
+	}
+
+	ak4641_write_reg_cache(codec, reg, val);
+	return 0;
+}
+
 static const char *ak4641_mono_gain[] = {"+6dB", "-17dB"};
 static const char *ak4641_mono_out[] = {"(L + R)/2", "Hi-Z"};
 static const char *ak4641_hp_out[] = {"Stereo", "Mono"};
 static const char *ak4641_deemp[] = {"44.1kHz", "Off", "48kHz", "32kHz"};
 static const char *ak4641_mic_select[] = {"Internal", "External"};
+static const char *ak4641_mic_or_dac[] = {"Microphone", "Voice DAC"};
 
 static const struct soc_enum ak4641_enum[] = {
 	SOC_ENUM_SINGLE(AK4641_SIG1, 7, 2, ak4641_mono_gain),
@@ -130,6 +202,7 @@ static const struct soc_enum ak4641_enum[] = {
 	SOC_ENUM_SINGLE(AK4641_MODE2, 2, 2, ak4641_hp_out),
 	SOC_ENUM_SINGLE(AK4641_DAC, 0, 4, ak4641_deemp),
 	SOC_ENUM_SINGLE(AK4641_MIC, 1, 2, ak4641_mic_select),
+	SOC_ENUM_SINGLE(AK4641_BTIF, 4, 2, ak4641_mic_or_dac),
 };
 
 static const struct snd_kcontrol_new ak4641_snd_controls[] = {
@@ -139,10 +212,9 @@ static const struct snd_kcontrol_new ak4641_snd_controls[] = {
 	SOC_ENUM("Headphone Output", ak4641_enum[2]),
 	SOC_ENUM("Playback Deemphasis", ak4641_enum[3]),
 
-	/* Fixme: Equalizer */
-	//SOC_SINGLE("Bass Volume", AK4535_DAC, 2, 3, 0),
 	SOC_SINGLE("Mic Boost (+20dB) Switch", AK4641_MIC, 0, 1, 0),
 	SOC_ENUM("Mic Select", ak4641_enum[4]),
+	SOC_ENUM("Input Select", ak4641_enum[5]),
 
 	SOC_SINGLE("ALC Operation Time", AK4641_TIMER, 0, 3, 0),
 	SOC_SINGLE("ALC Recovery Time", AK4641_TIMER, 2, 3, 0),
@@ -160,6 +232,12 @@ static const struct snd_kcontrol_new ak4641_snd_controls[] = {
 	SOC_SINGLE("AUX In Volume", AK4641_VOL, 0, 15, 0),
 	SOC_SINGLE("Mic In Volume", AK4641_VOL, 4, 7, 0),
 	SOC_SINGLE("Mic In -4dB", AK4641_VOL, 7, 1, 0),
+
+	AK4641_EQUAL("Equalizer <= 100H z", 0),
+	AK4641_EQUAL("Equalizer 250 Hz", 1),
+	AK4641_EQUAL("Equalizer 1 kHz", 2),
+	AK4641_EQUAL("Equalizer 3.5 kHz", 3),
+	AK4641_EQUAL("Equalizer >= 10 kHz", 4),
 };
 
 /* add non dapm controls */
@@ -196,9 +274,13 @@ static const struct snd_kcontrol_new ak4641_input_mixer_controls[] = {
 	SOC_DAPM_SINGLE("Aux Capture Switch", AK4641_MIC, 5, 1, 0),
 };
 
+/* Mic mux */
+static const struct snd_kcontrol_new ak4641_mic_mux_control =
+	SOC_DAPM_ENUM("Mic Select", ak4641_enum[4]);
+
 /* Input mux */
 static const struct snd_kcontrol_new ak4641_input_mux_control =
-	SOC_DAPM_ENUM("Input Select", ak4641_enum[4]);
+	SOC_DAPM_ENUM("Input Select", ak4641_enum[5]);
 
 /* HP L switch */
 static const struct snd_kcontrol_new ak4641_hpl_control =
@@ -212,12 +294,6 @@ static const struct snd_kcontrol_new ak4641_hpr_control =
 static const struct snd_kcontrol_new ak4641_mono2_control =
 	SOC_DAPM_SINGLE("Switch", AK4641_SIG1, 0, 1, 0);
 
-#if 0
-/* Line out switch */
-static const struct snd_kcontrol_new ak4535_line_control =
-	SOC_DAPM_SINGLE("Switch", AK5351_SIG2, 6, 1, 0);
-#endif
-
 /* ak4535 dapm widgets */
 static const struct snd_soc_dapm_widget ak4641_dapm_widgets[] = {
 	SND_SOC_DAPM_MIXER("Stereo Mixer", SND_SOC_NOPM, 0, 0,
@@ -229,26 +305,20 @@ static const struct snd_soc_dapm_widget ak4641_dapm_widgets[] = {
 	SND_SOC_DAPM_MIXER("Input Mixer", SND_SOC_NOPM, 0, 0,
 		&ak4641_input_mixer_controls[0],
 		ARRAY_SIZE(ak4641_input_mixer_controls)),
+	SND_SOC_DAPM_MUX("Mic Mux", SND_SOC_NOPM, 0, 0,
+		&ak4641_mic_mux_control),
 	SND_SOC_DAPM_MUX("Input Mux", SND_SOC_NOPM, 0, 0,
 		&ak4641_input_mux_control),
 	SND_SOC_DAPM_SWITCH("Mono 2 Enable", SND_SOC_NOPM, 0, 0,
 		&ak4641_mono2_control),
 	/* speaker powersave bit */
-	SND_SOC_DAPM_PGA("Speaker Enable", AK4641_MODE2, 0, 0, NULL, 0),
-#if 0
-	SND_SOC_DAPM_SWITCH("Line Out Enable", SND_SOC_NOPM, 0, 0,
-		&ak4535_line_control),
-#endif
-	SND_SOC_DAPM_SWITCH("Left HP Enable", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_SWITCH("Left Out Enable", SND_SOC_NOPM, 0, 0,
 		&ak4641_hpl_control),
-	SND_SOC_DAPM_SWITCH("Right HP Enable", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_SWITCH("Right Out Enable", SND_SOC_NOPM, 0, 0,
 		&ak4641_hpr_control),
+
 	SND_SOC_DAPM_OUTPUT("LOUT"),
-	SND_SOC_DAPM_OUTPUT("HPL"),
 	SND_SOC_DAPM_OUTPUT("ROUT"),
-	SND_SOC_DAPM_OUTPUT("HPR"),
-	SND_SOC_DAPM_OUTPUT("SPP"),
-	SND_SOC_DAPM_OUTPUT("SPN"),
 	SND_SOC_DAPM_OUTPUT("MOUT1"),
 	SND_SOC_DAPM_OUTPUT("MOUT2"),
 	SND_SOC_DAPM_OUTPUT("MICOUT"),
@@ -260,75 +330,64 @@ static const struct snd_soc_dapm_widget ak4641_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA("Line Out", AK4641_PM1, 4, 0, NULL, 0),
 
 	SND_SOC_DAPM_DAC("DAC", "Playback", AK4641_PM2, 0, 0),
-	//SND_SOC_DAPM_PGA("HP R Amp", AK4535_PM2, 1, 0, NULL, 0),
-	//SND_SOC_DAPM_PGA("HP L Amp", AK4535_PM2, 2, 0, NULL, 0),
-	// Mono out SND_SOC_DAPM_PGA("Spk Amp", AK4535_PM2, 3, 0, NULL, 0),
+	SND_SOC_DAPM_PGA("Mono Out 2", AK4641_PM2, 3, 0, NULL, 0),
 
+	SND_SOC_DAPM_ADC("Voice ADC", "Voice Capture", AK4641_BTIF, 0, 0),
+	SND_SOC_DAPM_ADC("Voice DAC", "Voice Playback", AK4641_BTIF, 1, 0),
 
 	SND_SOC_DAPM_MICBIAS("Mic Int Bias", AK4641_MIC, 3, 0),
 	SND_SOC_DAPM_MICBIAS("Mic Ext Bias", AK4641_MIC, 4, 0),
+
 	SND_SOC_DAPM_INPUT("MICIN"),
 	SND_SOC_DAPM_INPUT("MICEXT"),
 	SND_SOC_DAPM_INPUT("AUX"),
-	SND_SOC_DAPM_INPUT("MIN"),
 	SND_SOC_DAPM_INPUT("AIN"),
 };
 
 static const struct snd_soc_dapm_route audio_map[] = {
-	/*stereo mixer */
+	/* Stereo Mixer */
 	{"Stereo Mixer", "Playback Switch", "DAC"},
-	{"Stereo Mixer", "Mic Sidetone Switch", "Mic"},
+	{"Stereo Mixer", "Mic Sidetone Switch", "Input"},
 	{"Stereo Mixer", "Aux Bypass Switch", "AUX In"},
 
-	/* mono1 mixer */
-	{"Mono1 Mixer", "Mic Sidetone Switch", "Mic"},
+	/* Mono 1 Mixer */
+	{"Mono1 Mixer", "Mic Sidetone Switch", "Input"},
 	{"Mono1 Mixer", "Mono Playback Switch", "DAC"},
 
 	/* Mic */
 	{"Mic", NULL, "AIN"},
-	{"Input Mux", "Internal", "Mic Int Bias"},
-	{"Input Mux", "External", "Mic Ext Bias"},
+	{"Mic Mux", "Internal", "Mic Int Bias"},
+	{"Mic Mux", "External", "Mic Ext Bias"},
 	{"Mic Int Bias", NULL, "MICIN"},
 	{"Mic Ext Bias", NULL, "MICEXT"},
-	{"MICOUT", NULL, "Input Mux"},
+	{"MICOUT", NULL, "Mic Mux"},
 
-	/* line out */
+	/* Input Mux */
+	{"Input", "Input Mux", "Mic"},
+	{"Input", "Input Mux", "Voice DAC"},
+
+	/* Line Out */
 	{"LOUT", NULL, "Line Out Enable"},
 	{"ROUT", NULL, "Line Out Enable"},
 	{"Line Out Enable", "Switch", "Line Out"},
 	{"Line Out", NULL, "Stereo Mixer"},
 
-	/* mono1 out */
+	/* Mono 1 Out */
 	{"MOUT1", NULL, "Mono Out"},
 	{"Mono Out", NULL, "Mono1 Mixer"},
-
-	/* left HP */
-	{"HPL", NULL, "Left HP Enable"},
-	{"Left HP Enable", "Switch", "HP L Amp"},
-	{"HP L Amp", NULL, "Stereo Mixer"},
-
-	/* right HP */
-	{"HPR", NULL, "Right HP Enable"},
-	{"Right HP Enable", "Switch", "HP R Amp"},
-	{"HP R Amp", NULL, "Stereo Mixer"},
-
-	/* speaker */
-	{"SPP", NULL, "Speaker Enable"},
-	{"SPN", NULL, "Speaker Enable"},
-	{"Speaker Enable", "Switch", "Spk Amp"},
-	{"Spk Amp", NULL, "MIN"},
-
-	/* mono 2 */
+	
+	/* Mono 2 Out */
 	{"MOUT2", NULL, "Mono 2 Enable"},
 	{"Mono 2 Enable", "Switch", "Stereo Mixer"},
+	{"Voice ADC", NULL, "Mono 2 Enable"},
 
 	/* Aux In */
-	{"Aux In", NULL, "AUX"},
+	{"AUX In", NULL, "AUX"},
 
 	/* ADC */
 	{"ADC", NULL, "Input Mixer"},
 	{"Input Mixer", "Mic Capture Switch", "Mic"},
-	{"Input Mixer", "Aux Capture Switch", "Aux In"},
+	{"Input Mixer", "Aux Capture Switch", "AUX In"},
 };
 
 static int ak4641_add_widgets(struct snd_soc_codec *codec)
@@ -352,7 +411,18 @@ static int ak4641_set_dai_sysclk(struct snd_soc_dai *codec_dai,
 	return 0;
 }
 
-static int ak4641_hw_params(struct snd_pcm_substream *substream,
+static int ak4641_pcm_hw_params(struct snd_pcm_substream *substream,
+	struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_device *socdev = rtd->socdev;
+	struct snd_soc_codec *codec = socdev->codec;
+	struct ak4641_priv *ak4641 = codec->private_data;
+
+	/* FIXME */
+}
+
+static int ak4641_i2s_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -382,7 +452,35 @@ static int ak4641_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int ak4641_set_dai_fmt(struct snd_soc_dai *codec_dai,
+static int ak4641_pcm_set_dai_fmt(struct snd_soc_dai *codec_dai,
+				  unsigned int fmt)
+{
+	struct snd_soc_codec *codec = codec_dai->codec;
+	u8 btif = ak4641_read_reg_cache(codec, AK4641_BTIF) & ~(0x3 << 5);
+
+	/* interface format */
+	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
+	case SND_SOC_DAIFMT_I2S:
+		btif |= (0x3 << 5);
+		break;
+	case SND_SOC_DAIFMT_LEFT_J:
+		btif |= (0x2 << 5);
+		break;
+	case SND_SOC_DAIFMT_DSP_A:	/* MSB after FRM */
+		btif |= (0x0 << 5);
+		break;
+	case SND_SOC_DAIFMT_DSP_B:	/* MSB during FRM */
+		btif |= (0x1 << 5);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	ak4641_write(codec, AK4641_BTIF, btif);
+	return 0;
+}
+
+static int ak4641_i2s_set_dai_fmt(struct snd_soc_dai *codec_dai,
 		unsigned int fmt)
 {
 	struct snd_soc_codec *codec = codec_dai->codec;
@@ -448,31 +546,65 @@ static int ak4641_set_bias_level(struct snd_soc_codec *codec,
 #define AK4641_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |\
 		SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 |\
 		SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000)
+#define AK4641_RATES_BT (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |\
+			 SNDRV_PCM_RATE_16000)
+#define AK4641_FORMATS	(SNDRV_PCM_FMTBIT_S16_LE)
 
-/* FIXME: Add DAI for the bluetooth/voice part */
-struct snd_soc_dai ak4641_dai = {
+struct snd_soc_dai ak4641_dai[] = {
+{
 	.name = "AK4641 HiFi",
+	.id = 1,
 	.playback = {
-		.stream_name = "Playback",
+		.stream_name = "HiFi Playback",
 		.channels_min = 1,
 		.channels_max = 2,
 		.rates = AK4641_RATES,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,},
+		.formats = AK4641_FORMATS,
+	},
 	.capture = {
 		.stream_name = "Capture",
 		.channels_min = 1,
 		.channels_max = 2,
 		.rates = AK4641_RATES,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,},
+		.formats = AK4641_FORMATS,
+	},
 	.ops = {
-		.hw_params = ak4641_hw_params,
+		.hw_params = ak4641_i2s_hw_params,
 	},
 	.dai_ops = {
-		.set_fmt = ak4641_set_dai_fmt,
+		.set_fmt = ak4641_i2s_set_dai_fmt,
 		.digital_mute = ak4641_mute,
 		.set_sysclk = ak4641_set_dai_sysclk,
 	},
+},
+{
+	.name = "AK4641 Voice",
+	.id = 1,
+	.playback = {
+		.stream_name = "Voice Playback",
+		.channels_min = 1,
+		.channels_max = 1,	
+		.rates = AK4641_RATES_BT,
+		.formats = AK4641_FORMATS,
+	},
+	.capture = {
+		.stream_name = "Capture",
+		.channels_min = 1,
+		.channels_max = 1,
+		.rates = AK4641_RATES_BT,
+		.formats = AK4641_FORMATS,
+	},
+	.ops = {
+		.hw_params = ak4641_pcm_hw_params,
+	},
+	.dai_ops = {
+		.set_fmt = ak4641_pcm_set_dai_fmt,
+		.digital_mute = ak4641_mute,
+		.set_sysclk = ak4641_set_dai_sysclk,
+	},
+},
 };
+
 EXPORT_SYMBOL_GPL(ak4641_dai);
 
 static int ak4641_suspend(struct platform_device *pdev, pm_message_t state)
@@ -508,8 +640,8 @@ static int ak4641_init(struct snd_soc_device *socdev)
 	codec->read = ak4641_read_reg_cache;
 	codec->write = ak4641_write;
 	codec->set_bias_level = ak4641_set_bias_level;
-	codec->dai = &ak4641_dai;
-	codec->num_dai = 1;
+	codec->dai = ak4641_dai;
+	codec->num_dai = 2;
 	codec->reg_cache_size = ARRAY_SIZE(ak4641_reg);
 	codec->reg_cache = kmemdup(ak4641_reg, sizeof(ak4641_reg), GFP_KERNEL);
 
@@ -566,7 +698,7 @@ static int ak4641_i2c_probe(struct i2c_client *i2c,
 	return ret;
 }
 
-static int ak4641_i2c_remove(struct i2c_client *client)
+static int __devexit ak4641_i2c_remove(struct i2c_client *client)
 {
 	struct snd_soc_codec *codec = i2c_get_clientdata(client);
 	kfree(codec->reg_cache);
