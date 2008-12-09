@@ -15,6 +15,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+#include <linux/rfkill.h>
 
 #include <mach/hardware.h>
 #include <asm/mach-types.h>
@@ -63,6 +64,21 @@ static ssize_t bt_read(struct device *dev, struct device_attribute *attr,
 			if (s3c2410_gpio_getpin(GTA02_GPIO_BT_EN) == 0)
 				ret = 1;
 		}
+		pcf50606_onoff_set(pcf50606_global,
+				   PCF50606_REGULATOR_D1REG, on);
+		neo1973_gpb_setpin(GTA01_GPIO_BT_EN, on);
+	} else if (machine_is_neo1973_gta02()) {
+		if (s3c2410_gpio_getpin(GTA02_GPIO_BT_EN) == on)
+			return 0;
+		neo1973_gpb_setpin(GTA02_GPIO_BT_EN, !on);
+		pcf50633_voltage_set(pcf50633_global,
+			PCF50633_REGULATOR_LDO4, on ? 3200 : 0);
+		pcf50633_onoff_set(pcf50633_global,
+			PCF50633_REGULATOR_LDO4, on);
+		vol = pcf50633_voltage_get(pcf50633_global,
+			PCF50633_REGULATOR_LDO4);
+		dev_info(dev, "GTA02 Set PCF50633 LDO4 = %d\n", vol);
+		neo1973_gpb_setpin(GTA02_GPIO_BT_EN, on);
 	}
 
 	if (!ret) {
@@ -76,7 +92,6 @@ static ssize_t bt_write(struct device *dev, struct device_attribute *attr,
 			const char *buf, size_t count)
 {
 	unsigned long on = simple_strtoul(buf, NULL, 10);
-	unsigned int vol;
 
 	if (!strcmp(attr->attr.name, "power_on")) {
 		if (machine_is_neo1973_gta01()) {
@@ -157,6 +172,7 @@ static struct attribute_group gta01_bt_attr_group = {
 
 static int __init gta01_bt_probe(struct platform_device *pdev)
 {
+	struct rfkill *rfkill;
 	dev_info(&pdev->dev, DRVMSG ": starting\n");
 
 	if (machine_is_neo1973_gta01()) {
@@ -175,12 +191,19 @@ static int __init gta01_bt_probe(struct platform_device *pdev)
 		neo1973_gpb_setpin(GTA02_GPIO_BT_EN, 0);
 	}
 
+	platform_set_drvdata(pdev, rfkill);
+
 	return sysfs_create_group(&pdev->dev.kobj, &gta01_bt_attr_group);
 }
 
 static int gta01_bt_remove(struct platform_device *pdev)
 {
+	struct rfkill *rfkill = platform_get_drvdata(pdev);
+
 	sysfs_remove_group(&pdev->dev.kobj, &gta01_bt_attr_group);
+
+	rfkill_unregister(rfkill);
+	rfkill_free(rfkill);
 
 	return 0;
 }

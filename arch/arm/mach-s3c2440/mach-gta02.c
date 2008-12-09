@@ -79,6 +79,7 @@
 #include <plat/iic.h>
 #include <asm/plat-s3c24xx/neo1973.h>
 #include <mach/neo1973-pm-gsm.h>
+#include <mach/gta02-pm-wlan.h>
 
 #include <linux/jbt6k74.h>
 
@@ -95,6 +96,7 @@
 
 #include <linux/ts_filter_mean.h>
 #include <linux/ts_filter_median.h>
+#include <linux/ts_filter_group.h>
 
 /* arbitrates which sensor IRQ owns the shared SPI bus */
 static spinlock_t motion_irq_lock;
@@ -903,6 +905,20 @@ static struct s3c2410_platform_nand gta02_nand_info = {
 	.software_ecc	= 1,
 };
 
+
+static void gta02_s3c_mmc_set_power(unsigned char power_mode,
+    unsigned short vdd)
+{
+	gta02_wlan_power(
+	    power_mode == MMC_POWER_ON ||
+	    power_mode == MMC_POWER_UP);
+}
+
+
+static struct s3c24xx_mci_pdata gta02_s3c_mmc_cfg = {
+	.set_power	= gta02_s3c_mmc_set_power,
+};
+
 static void gta02_udc_command(enum s3c2410_udc_cmd_e cmd)
 {
 	printk(KERN_DEBUG "%s(%d)\n", __func__, cmd);
@@ -941,28 +957,36 @@ static struct s3c2410_udc_mach_info gta02_udc_cfg = {
 
 /* touchscreen configuration */
 
+static struct ts_filter_group_configuration gta02_ts_group_config = {
+	.extent = 12,
+	.close_enough = 10,
+	.threshold = 6,		/* at least half of the points in a group */
+	.attempts = 10,
+};
+
 static struct ts_filter_median_configuration gta02_ts_median_config = {
-	.extent = 31,
-	.decimation_below = 28,
+	.extent = 20,
+	.decimation_below = 3,
 	.decimation_threshold = 8 * 3,
-	.decimation_above = 12,
+	.decimation_above = 4,
 };
 
 static struct ts_filter_mean_configuration gta02_ts_mean_config = {
-	.bits_filter_length = 3,
-	.averaging_threshold = 6 * 3,
+	.bits_filter_length = 2, /* 4 points */
 };
 
 static struct s3c2410_ts_mach_info gta02_ts_cfg = {
 	.delay = 10000,
 	.presc = 0xff, /* slow as we can go */
 	.filter_sequence = {
-		[0] = &ts_filter_median_api,
-		[1] = &ts_filter_mean_api,
+		[0] = &ts_filter_group_api,
+		[1] = &ts_filter_median_api,
+		[2] = &ts_filter_mean_api,
 	},
 	.filter_config = {
-		[0] = &gta02_ts_median_config,
-		[1] = &gta02_ts_mean_config,
+		[0] = &gta02_ts_group_config,
+		[1] = &gta02_ts_median_config,
+		[2] = &gta02_ts_mean_config,
 	},
 };
 
@@ -1580,6 +1604,7 @@ static void __init gta02_machine_init(void)
 
 	s3c_device_usb.dev.platform_data = &gta02_usb_info;
 	s3c_device_nand.dev.platform_data = &gta02_nand_info;
+	s3c_device_sdi.dev.platform_data = &gta02_s3c_mmc_cfg;
 
 	/* acc sensor chip selects */
 	s3c2410_gpio_setpin(S3C2410_GPD12, 1);
@@ -1597,7 +1622,7 @@ static void __init gta02_machine_init(void)
 
 	platform_add_devices(gta02_devices, ARRAY_SIZE(gta02_devices));
 
-	s3c2410_pm_init();
+	s3c_pm_init();
 
 	/* Make sure the modem can wake us up */
 	set_irq_type(GTA02_IRQ_MODEM, IRQ_TYPE_EDGE_RISING);

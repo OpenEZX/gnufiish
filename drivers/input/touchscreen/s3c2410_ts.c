@@ -19,7 +19,7 @@
  * ChangeLog
  *
  * 2004-09-05: Herbert Pötzl <herbert@13thfloor.at>
- *	- added clock (de-)allocation code
+ *      - added clock (de-)allocation code
  *
  * 2005-03-06: Arnaud Patard <arnaud.patard@rtp-net.org>
  *      - h1940_ -> s3c2410 (this driver is now also used on the n30
@@ -35,11 +35,14 @@
  *        controller
  *
  * 2007-05-23: Harald Welte <laforge@openmoko.org>
- * 	- Add proper support for S32440
+ *      - Add proper support for S32440
  *
  * 2008-06-23: Andy Green <andy@openmoko.com>
  *      - removed averaging system
  *      - added generic Touchscreen filter stuff
+ *
+ * 2008-11-27: Nelson Castillo <arhuaco@freaks-unidos.net>
+ *      - improve interrupt handling
  */
 
 #include <linux/errno.h>
@@ -49,6 +52,8 @@
 #include <linux/input.h>
 #include <linux/init.h>
 #include <linux/serio.h>
+#include <linux/timer.h>
+#include <linux/kfifo.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
@@ -89,8 +94,15 @@ MODULE_LICENSE("GPL");
  * Definitions & global arrays.
  */
 
-
 static char *s3c2410ts_name = "s3c2410 TouchScreen";
+
+#define TS_RELEASE_TIMEOUT (HZ >> 4)		/* ~ 60 milliseconds */
+#define TS_EVENT_FIFO_SIZE (2 << 6) /* must be a power of 2 */
+
+#define TS_STATE_STANDBY 0 /* initial state */
+#define TS_STATE_PRESSED 1
+#define TS_STATE_RELEASE_PENDING 2
+#define TS_STATE_RELEASE 3
 
 /*
  * Per-touchscreen data.
@@ -98,15 +110,20 @@ static char *s3c2410ts_name = "s3c2410 TouchScreen";
 
 struct s3c2410ts {
 	struct input_dev *dev;
-	int flag_first_touch_sent;
 	struct ts_filter *tsf[MAX_TS_FILTER_CHAIN];
 	int coords[2]; /* just X and Y for us */
+	int is_down;
+	int state;
+	struct kfifo *event_fifo;
 };
 
 static struct s3c2410ts ts;
 
 static void __iomem *base_addr;
 
+/*
+ * A few low level functions.
+ */
 
 static inline void s3c2410_ts_connect(void)
 {
@@ -116,126 +133,209 @@ static inline void s3c2410_ts_connect(void)
 	s3c2410_gpio_cfgpin(S3C2410_GPG15, S3C2410_GPG15_nYPON);
 }
 
-static void touch_timer_fire(unsigned long data)
+static void s3c2410_ts_start_adc_conversion(void)
 {
-  	unsigned long data0;
-  	unsigned long data1;
-	int updown;
-
-	data0 = readl(base_addr + S3C2410_ADCDAT0);
-	data1 = readl(base_addr + S3C2410_ADCDAT1);
-
-	updown = (!(data0 & S3C2410_ADCDAT0_UPDOWN)) &&
-					    (!(data1 & S3C2410_ADCDAT0_UPDOWN));
-
-	// if we need to send an untouch event, but we haven't yet sent the
-	// touch event (this happens if the touchscreen was tapped lightly),
-	// send the touch event first
-	if (!updown && !ts.flag_first_touch_sent) {
-		if (ts.tsf[0])
-			(ts.tsf[0]->api->scale)(ts.tsf[0], &ts.coords[0]);
-		input_report_abs(ts.dev, ABS_X, ts.coords[0]);
-		input_report_abs(ts.dev, ABS_Y, ts.coords[1]);
-
-		input_report_key(ts.dev, BTN_TOUCH, 1);
-		input_report_abs(ts.dev, ABS_PRESSURE, 1);
-		input_sync(ts.dev);
-		ts.flag_first_touch_sent = 1;
-	}
-
-	if (updown) {
-
-		if (ts.tsf[0])
-			(ts.tsf[0]->api->scale)(ts.tsf[0], &ts.coords[0]);
-
-#ifdef CONFIG_TOUCHSCREEN_S3C2410_DEBUG
-		{
-			struct timeval tv;
-
-			do_gettimeofday(&tv);
-			printk(DEBUG_LVL "T:%06d, X:%03ld, Y:%03ld\n",
-				   (int)tv.tv_usec, ts.coords[0], ts.coords[1]);
-		}
-#endif
-
-		input_report_abs(ts.dev, ABS_X, ts.coords[0]);
-		input_report_abs(ts.dev, ABS_Y, ts.coords[1]);
-
-		input_report_key(ts.dev, BTN_TOUCH, 1);
-		input_report_abs(ts.dev, ABS_PRESSURE, 1);
-		input_sync(ts.dev);
-
-		writel(S3C2410_ADCTSC_PULL_UP_DISABLE | AUTOPST,
-						      base_addr+S3C2410_ADCTSC);
-		writel(readl(base_addr+S3C2410_ADCCON) |
-			 S3C2410_ADCCON_ENABLE_START, base_addr+S3C2410_ADCCON);
-	} else {
-
-		if (ts.tsf[0])
-			(ts.tsf[0]->api->clear)(ts.tsf[0]);
-
-		input_report_key(ts.dev, BTN_TOUCH, 0);
-		input_report_abs(ts.dev, ABS_PRESSURE, 0);
-		input_sync(ts.dev);
-		ts.flag_first_touch_sent = 0;
-
-		writel(WAIT4INT(0), base_addr+S3C2410_ADCTSC);
-	}
+	writel(S3C2410_ADCTSC_PULL_UP_DISABLE | AUTOPST,
+	       base_addr + S3C2410_ADCTSC);
+	writel(readl(base_addr + S3C2410_ADCCON) | S3C2410_ADCCON_ENABLE_START,
+	       base_addr + S3C2410_ADCCON);
 }
 
-static struct timer_list touch_timer =
-		TIMER_INITIALIZER(touch_timer_fire, 0, 0);
+/*
+ * Just send the input events.
+ */
+
+enum ts_input_event {IE_DOWN = 0, IE_UP};
+
+static void ts_input_report(int event, int coords[])
+{
+#ifdef CONFIG_TOUCHSCREEN_S3C2410_DEBUG
+	static char *s[] = {"down", "up"};
+	struct timeval tv;
+
+	do_gettimeofday(&tv);
+#endif
+
+	if (event == IE_DOWN) {
+		input_report_abs(ts.dev, ABS_X, coords[0]);
+		input_report_abs(ts.dev, ABS_Y, coords[1]);
+		input_report_key(ts.dev, BTN_TOUCH, 1);
+		input_report_abs(ts.dev, ABS_PRESSURE, 1);
+
+#ifdef CONFIG_TOUCHSCREEN_S3C2410_DEBUG
+		printk(DEBUG_LVL "T:%06d %6s (X:%03d, Y:%03d)\n",
+		       (int)tv.tv_usec, s[event], coords[0], coords[1]);
+#endif
+	} else {
+		input_report_key(ts.dev, BTN_TOUCH, 0);
+		input_report_abs(ts.dev, ABS_PRESSURE, 0);
+
+#ifdef CONFIG_TOUCHSCREEN_S3C2410_DEBUG
+		printk(DEBUG_LVL "T:%06d %6s\n",
+		       (int)tv.tv_usec, s[event]);
+#endif
+	}
+
+	input_sync(ts.dev);
+}
+
+/*
+ * Manage the state of the touchscreen.
+ */
+
+static void event_send_timer_f(unsigned long data);
+
+static struct timer_list event_send_timer =
+		TIMER_INITIALIZER(event_send_timer_f, 0, 0);
+
+static void event_send_timer_f(unsigned long data)
+{
+	static unsigned long running;
+	static int noop_counter;
+	int event_type;
+
+	if (unlikely(test_and_set_bit(0, &running))) {
+		mod_timer(&event_send_timer,
+			  jiffies + TS_RELEASE_TIMEOUT);
+		return;
+	}
+
+	while (__kfifo_get(ts.event_fifo, (unsigned char *)&event_type,
+			   sizeof(int))) {
+		int buf[2];
+
+		switch (event_type) {
+		case 'D':
+			if (ts.state == TS_STATE_RELEASE_PENDING)
+				/* Ignore short UP event */
+				ts.state = TS_STATE_PRESSED;
+			break;
+
+		case 'U':
+			ts.state = TS_STATE_RELEASE_PENDING;
+			break;
+
+		case 'P':
+			if (ts.is_down) /* stylus_action needs a conversion */
+				s3c2410_ts_start_adc_conversion();
+
+			if (unlikely(__kfifo_get(ts.event_fifo,
+						 (unsigned char *)buf,
+						 sizeof(int) * 2)
+				     != sizeof(int) * 2))
+				goto ts_exit_error;
+
+			ts_input_report(IE_DOWN, buf);
+			ts.state = TS_STATE_PRESSED;
+			break;
+
+		default:
+			goto ts_exit_error;
+		}
+
+		noop_counter = 0;
+	}
+
+	if (noop_counter++ >= 1) {
+		noop_counter = 0;
+		if (ts.state == TS_STATE_RELEASE_PENDING) {
+			/* We delay the UP event for a
+			 * while to avoid jitter. If we get a DOWN
+			 * event we do not send it. */
+
+			ts_input_report(IE_UP, NULL);
+			ts.state = TS_STATE_STANDBY;
+
+			if (ts.tsf[0])
+				(ts.tsf[0]->api->clear)(ts.tsf[0]);
+		}
+	} else {
+		mod_timer(&event_send_timer, jiffies + TS_RELEASE_TIMEOUT);
+	}
+
+	clear_bit(0, &running);
+
+	return;
+
+ts_exit_error: /* should not happen unless we have a bug */
+	printk(KERN_ERR __FILE__ ": event_send_timer_f failed\n");
+}
+
+/*
+ * Manage interrupts.
+ */
 
 static irqreturn_t stylus_updown(int irq, void *dev_id)
 {
 	unsigned long data0;
 	unsigned long data1;
-	int updown;
+	int event_type;
 
 	data0 = readl(base_addr+S3C2410_ADCDAT0);
 	data1 = readl(base_addr+S3C2410_ADCDAT1);
 
-	updown = (!(data0 & S3C2410_ADCDAT0_UPDOWN)) &&
+	ts.is_down = (!(data0 & S3C2410_ADCDAT0_UPDOWN)) &&
 					    (!(data1 & S3C2410_ADCDAT0_UPDOWN));
 
-	/* TODO we should never get an interrupt with updown set while
-	 * the timer is running, but maybe we ought to verify that the
-	 * timer isn't running anyways. */
+	event_type = ts.is_down ? 'D' : 'U';
 
-	if (updown)
-		touch_timer_fire(0);
+	if (unlikely(__kfifo_put(ts.event_fifo, (unsigned char *)&event_type,
+		     sizeof(int)) != sizeof(int))) /* should not happen */
+		printk(KERN_ERR __FILE__": stylus_updown lost event!\n");
+
+	if (ts.is_down)
+		s3c2410_ts_start_adc_conversion();
+	else
+		writel(WAIT4INT(0), base_addr+S3C2410_ADCTSC);
+
+	mod_timer(&event_send_timer, jiffies + 1);
 
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t stylus_action(int irq, void *dev_id)
 {
+	int buf[3];
+
 	/* grab the ADC results */
 	ts.coords[0] = readl(base_addr + S3C2410_ADCDAT0) &
 						    S3C2410_ADCDAT0_XPDATA_MASK;
 	ts.coords[1] = readl(base_addr + S3C2410_ADCDAT1) &
 						    S3C2410_ADCDAT1_YPDATA_MASK;
 
-	if (!ts.tsf[0]) /* filtering is disabled then use raw directly */
-		goto real_sample;
+	if (ts.tsf[0]) { /* filtering is enabled, don't use raw directly */
+		switch ((ts.tsf[0]->api->process)(ts.tsf[0], &ts.coords[0])) {
+		case 0:	/*
+			 * no real sample came out of processing yet,
+			 * get another raw result to feed it
+			 */
+			s3c2410_ts_start_adc_conversion();
+			return IRQ_HANDLED;
+		case 1:	/* filters are ready to deliver a sample */
+			(ts.tsf[0]->api->scale)(ts.tsf[0], &ts.coords[0]);
+			break;
+		case -1:
+			/* error in filters, ignore the event */
+			(ts.tsf[0]->api->clear)(ts.tsf[0]);
+			writel(WAIT4INT(1), base_addr + S3C2410_ADCTSC);
+			return IRQ_HANDLED;
+		default:
+			printk(KERN_ERR":stylus_action error\n");
+		}
+	}
 
-	/* send it to the chain of filters */
-	if ((ts.tsf[0]->api->process)(ts.tsf[0], &ts.coords[0]))
-		goto real_sample;
+	/* We use a buffer because want an atomic operation */
+	buf[0] = 'P';
+	buf[1] = ts.coords[0];
+	buf[2] = ts.coords[1];
 
-	/*
-	 * no real sample came out of processing yet,
-	 * get another raw result to feed it
-	 */
-	writel(S3C2410_ADCTSC_PULL_UP_DISABLE | AUTOPST,
-						    base_addr + S3C2410_ADCTSC);
-	writel(readl(base_addr + S3C2410_ADCCON) | S3C2410_ADCCON_ENABLE_START,
-						    base_addr + S3C2410_ADCCON);
-	return IRQ_HANDLED;
+	if (unlikely(__kfifo_put(ts.event_fifo, (unsigned char *)buf,
+		     sizeof(int) * 3) != sizeof(int) * 3))
+		/* should not happen */
+			printk(KERN_ERR":stylus_action error\n");
 
-real_sample:
-	mod_timer(&touch_timer, jiffies + 1);
 	writel(WAIT4INT(1), base_addr + S3C2410_ADCTSC);
+	mod_timer(&event_send_timer, jiffies + 1);
 
 	return IRQ_HANDLED;
 }
@@ -326,17 +426,25 @@ static int __init s3c2410ts_probe(struct platform_device *pdev)
 	ts.dev->id.vendor = 0xDEAD;
 	ts.dev->id.product = 0xBEEF;
 	ts.dev->id.version = S3C2410TSVERSION;
+	ts.state = TS_STATE_STANDBY;
+	ts.event_fifo = kfifo_alloc(TS_EVENT_FIFO_SIZE, GFP_KERNEL, NULL);
+	if (IS_ERR(ts.event_fifo)) {
+		ret = -EIO;
+		goto bail2;
+	}
 
 	/* create the filter chain set up for the 2 coordinates we produce */
 	ret = ts_filter_create_chain(
 		(struct ts_filter_api **)&info->filter_sequence,
-			   &info->filter_config, ts.tsf, ARRAY_SIZE(ts.coords));
+		(void *)&info->filter_config, ts.tsf, ARRAY_SIZE(ts.coords));
 	if (ret)
 		dev_info(&pdev->dev, "%d filter(s) initialized\n", ret);
 	else /* this is OK, just means there won't be any filtering */
 		dev_info(&pdev->dev, "Unfiltered output selected\n");
 
-	if (!ts.tsf[0])
+	if (ts.tsf[0])
+		(ts.tsf[0]->api->clear)(ts.tsf[0]);
+	else
 		dev_info(&pdev->dev, "No filtering\n");
 
 	/* Get irqs */
@@ -361,10 +469,6 @@ static int __init s3c2410ts_probe(struct platform_device *pdev)
 	/* All went ok, so register to the input system */
 	rc = input_register_device(ts.dev);
 	if (rc) {
-		free_irq(IRQ_TC, ts.dev);
-		free_irq(IRQ_ADC, ts.dev);
-		clk_disable(adc_clock);
-		iounmap(base_addr);
 		ret = -EIO;
 		goto bail5;
 	}
@@ -372,12 +476,17 @@ static int __init s3c2410ts_probe(struct platform_device *pdev)
 	return 0;
 
 bail5:
+	free_irq(IRQ_TC, ts.dev);
+	free_irq(IRQ_ADC, ts.dev);
+	clk_disable(adc_clock);
+	iounmap(base_addr);
 	disable_irq(IRQ_TC);
 bail4:
 	disable_irq(IRQ_ADC);
 bail3:
 	ts_filter_destroy_chain(ts.tsf);
-
+	kfifo_free(ts.event_fifo);
+bail2:
 	input_unregister_device(ts.dev);
 bail1:
 	iounmap(base_addr);
@@ -403,6 +512,8 @@ static int s3c2410ts_remove(struct platform_device *pdev)
 	iounmap(base_addr);
 
 	ts_filter_destroy_chain(ts.tsf);
+
+	kfifo_free(ts.event_fifo);
 
 	return 0;
 }
@@ -505,9 +616,3 @@ static void __exit s3c2410ts_exit(void)
 module_init(s3c2410ts_init);
 module_exit(s3c2410ts_exit);
 
-/*
-    Local variables:
-        compile-command: "make ARCH=arm CROSS_COMPILE=/usr/local/arm/3.3.2/bin/arm-linux- -k -C ../../.."
-        c-basic-offset: 8
-    End:
-*/
