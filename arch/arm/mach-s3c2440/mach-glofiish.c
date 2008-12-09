@@ -346,16 +346,22 @@ static struct s3c2410_udc_mach_info glofiish_udc_cfg = {
 
 /* touchscreen configuration */
 
+static struct ts_filter_group_configuration m800_ts_group_config = {
+	.extent = 12,
+	.close_enough = 10,
+	.threshold = 6,		/* at least half of the points in a group */
+	.attempts = 10,
+};
+
 static struct ts_filter_median_configuration m800_ts_median_config = {
-	.extent = 31,
-	.decimation_below = 28,
+	.extent = 20,
+	.decimation_below = 3,
 	.decimation_threshold = 8 * 3,
-	.decimation_above = 12,
+	.decimation_above = 4,
 };
 
 static struct ts_filter_mean_configuration m800_ts_mean_config = {
-	.bits_filter_length = 3,
-	.averaging_threshold = 6 * 3,
+	.bits_filter_length = 2, /* 4 points */
 };
 
 
@@ -363,12 +369,14 @@ static struct s3c2410_ts_mach_info glofiish_ts_cfg = {
 	.delay = 10000,
 	.presc = 50000000 / 1000000, /* 50 MHz PCLK / 1MHz */
 	.filter_sequence = {
-		[0] = &ts_filter_median_api,
-		[1] = &ts_filter_mean_api,
+		[0] = &ts_filter_group_api,
+		[1] = &ts_filter_median_api,
+		[2] = &ts_filter_mean_api,
 	},
 	.filter_config = {
-		[0] = &m800_ts_median_config,
-		[1] = &m800_ts_mean_config,
+		[0] = &m800_ts_group_config,
+		[1] = &m800_ts_median_config,
+		[2] = &m800_ts_mean_config,
 	},
 };
 
