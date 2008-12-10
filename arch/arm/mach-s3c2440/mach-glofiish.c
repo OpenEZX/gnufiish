@@ -78,6 +78,7 @@
 
 #include <linux/jbt6k74.h>
 
+#include <linux/ts_filter_group.h>
 #include <linux/ts_filter_mean.h>
 #include <linux/ts_filter_median.h>
 /*
@@ -717,7 +718,7 @@ static void __init glofiish_machine_init(void)
 
 	platform_add_devices(glofiish_devices, ARRAY_SIZE(glofiish_devices));
 
-	s3c2410_pm_init();
+	s3c_pm_init();
 }
 
 MACHINE_START(M800, "Glofiish M800")
