@@ -688,13 +688,6 @@ static int __devinit jbt_probe(struct spi_device *spi)
 		goto err_sysfs;
 	}
 
-	jbt->fb_notif.notifier_call = fb_notifier_callback;
-	rc = fb_register_client(&jbt->fb_notif);
-	if (rc < 0) {
-		dev_err(&spi->dev, "cannot register notifier\n");
-		goto err_sysfs;
-	}
-
 	return 0;
 
 err_sysfs:
@@ -737,10 +730,6 @@ static int jbt_suspend(struct spi_device *spi, pm_message_t state)
 	jbt->have_resumed = 0;
 
 	dev_info(&spi->dev, "**** jbt6k74 suspend end\n");
-
-	jbt->have_resumed = 0;
-
-/*	(jbt6k74_pdata->reset)(0, 0); */
 
 	return 0;
 }
