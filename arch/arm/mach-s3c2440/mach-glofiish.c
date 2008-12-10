@@ -639,6 +639,19 @@ static struct platform_device m800_modem_dev = {
 	.resource	= m800_modem_resources,
 };
 
+static struct resource m800_cpld_resources[] = {
+	[0] = {
+		.start	= S3C2410_CS1,
+		.end	= S3C2410_CS1 + 0x1000000 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+};
+
+static struct platform_device m800_cpld_dev = {
+	.name		= "gfish-cpld",
+	.num_resources	= ARRAY_SIZE(m800_cpld_resources),
+	.resource	= m800_cpld_resources,
+};
 
 static void __init glofiish_map_io(void)
 {
@@ -709,6 +722,7 @@ static void __init glofiish_machine_init(void)
 	platform_device_register(&m800_pm_bt_dev);
 	platform_device_register(&m800_pm_gps_dev);
 	platform_device_register(&m800_modem_dev);
+	platform_device_register(&m800_cpld_dev);
 	platform_device_register(&m800_button_dev);
 	platform_device_register(&s3c_device_spi_lcm);
 
