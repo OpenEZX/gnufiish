@@ -28,6 +28,7 @@
 #include <mach/regs-gpio.h>
 #include <mach/hardware.h>
 #include <mach/audio.h>
+#include <mach/glofiish.h>
 #include <linux/io.h>
 #include <mach/spi-gpio.h>
 #include <asm/mach-types.h>
@@ -38,7 +39,7 @@
 #include "s3c24xx-i2s.h"
 
 /* Debugging stuff */
-#define S3C24XX_SOC_GFISH_AK4641_DEBUG 0
+#define S3C24XX_SOC_GFISH_AK4641_DEBUG 1
 #if S3C24XX_SOC_GFISH_AK4641_DEBUG
 #define DBG(x...) printk(KERN_DEBUG "s3c24xx-soc-gfish-ak4641: " x)
 #else
@@ -147,6 +148,7 @@ static int gfish_hifi_hw_params(struct snd_pcm_substream *substream,
 	if (ret < 0)
 		return ret;
 #endif
+
 	return 0;
 }
 
@@ -156,9 +158,10 @@ static int gfish_hifi_hw_free(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *codec_dai = rtd->dai->codec_dai;
 
 	DBG("Entered %s\n", __func__);
-
+	
 	/* disable the PLL */
 	//return snd_soc_dai_set_pll(codec_dai, WM8753_PLL1, 0, 0);
+	return 0;
 }
 
 /*
@@ -226,6 +229,7 @@ static int gfish_voice_hw_free(struct snd_pcm_substream *substream)
 
 	/* disable the PLL */
 	//return snd_soc_dai_set_pll(codec_dai, WM8753_PLL2, 0, 0);
+	return 0;
 }
 
 static struct snd_soc_ops gfish_voice_ops = {
@@ -233,7 +237,6 @@ static struct snd_soc_ops gfish_voice_ops = {
 	.hw_free = gfish_voice_hw_free,
 };
 
-#if 0
 static int neo1973_scenario;
 
 static int neo1973_get_scenario(struct snd_kcontrol *kcontrol,
@@ -339,7 +342,7 @@ static int neo1973_set_scenario(struct snd_kcontrol *kcontrol,
 	return 1;
 }
 
-static const struct snd_soc_dapm_widget wm8753_dapm_widgets[] = {
+static const struct snd_soc_dapm_widget ak4641_dapm_widgets[] = {
 	SND_SOC_DAPM_LINE("Audio Out", NULL),
 	SND_SOC_DAPM_LINE("GSM Line Out", NULL),
 	SND_SOC_DAPM_LINE("GSM Line In", NULL),
@@ -349,28 +352,22 @@ static const struct snd_soc_dapm_widget wm8753_dapm_widgets[] = {
 
 
 static const struct snd_soc_dapm_route dapm_routes[] = {
-
-	/* Connections to the lm4857 amp */
-	{"Audio Out", NULL, "LOUT1"},
-	{"Audio Out", NULL, "ROUT1"},
+	/* Connections to headset and amp */
+	{"Audio Out", NULL, "LOUT"},
+	{"Audio Out", NULL, "ROUT"},
 
 	/* Connections to the GSM Module */
-	{"GSM Line Out", NULL, "MONO1"},
-	{"GSM Line Out", NULL, "MONO2"},
-	{"RXP", NULL, "GSM Line In"},
-	{"RXN", NULL, "GSM Line In"},
+	{"GSM Line Out", NULL, "MOUT1"},
+	{"AUX", NULL, "GSM Line In"},
 
 	/* Connections to Headset */
-	{"MIC1", NULL, "Mic Bias"},
-	{"Mic Bias", NULL, "Headset Mic"},
+	{"MICEXT", NULL, "Headset Mic"},
 
 	/* Call Mic */
-	{"MIC2", NULL, "Mic Bias"},
-	{"MIC2N", NULL, "Mic Bias"},
-	{"Mic Bias", NULL, "Call Mic"},
+	{"MICIN", NULL, "Call Mic"},
 
 	/* Connect the ALC pins */
-	{"ACIN", NULL, "ACOP"},
+	{"AIN", NULL, "MICOUT"},
 };
 
 static const char *neo_scenarios[] = {
@@ -389,11 +386,33 @@ static const struct soc_enum neo_scenario_enum[] = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(neo_scenarios), neo_scenarios),
 };
 
-static const struct snd_kcontrol_new wm8753_neo1973_controls[] = {
+static int m800_amp_get(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	if (s3c2410_gpio_getpin(M800_GPIO_AUDIO_AMP))
+		ucontrol->value.integer.value[0] = 1;
+	else
+		ucontrol->value.integer.value[0] = 0;
+
+	return 0;
+}
+
+static int m800_amp_set(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	if (ucontrol->value.integer.value[0])
+		s3c2410_gpio_setpin(M800_GPIO_AUDIO_AMP, 1);
+	else
+		s3c2410_gpio_setpin(M800_GPIO_AUDIO_AMP, 0);
+
+	return 1;
+}
+
+static const struct snd_kcontrol_new m800_controls[] = {
+	SOC_SINGLE_BOOL_EXT("Amp Power", 0, m800_amp_get, m800_amp_set),
 	SOC_ENUM_EXT("Neo Mode", neo_scenario_enum[0],
 		neo1973_get_scenario, neo1973_set_scenario),
 };
-#endif
 
 /*
  * This is an example machine initialisation for a ak4641 connected to a
@@ -414,18 +433,19 @@ static int gfish_ak4641_init(struct snd_soc_codec *codec)
 	snd_soc_dapm_nc_pin(codec, "OUT4");
 	snd_soc_dapm_nc_pin(codec, "LINE1");
 	snd_soc_dapm_nc_pin(codec, "LINE2");
+#endif
 
 	/* Add neo1973 specific widgets */
-	snd_soc_dapm_new_controls(codec, wm8753_dapm_widgets,
-				  ARRAY_SIZE(wm8753_dapm_widgets));
+	snd_soc_dapm_new_controls(codec, ak4641_dapm_widgets,
+				  ARRAY_SIZE(ak4641_dapm_widgets));
 
 	/* set endpoints to default mode */
 	set_scenario_endpoints(codec, NEO_AUDIO_OFF);
 
-	/* add neo1973 specific controls */
-	for (i = 0; i < ARRAY_SIZE(wm8753_neo1973_controls); i++) {
+	/* add M800 specific controls */
+	for (i = 0; i < ARRAY_SIZE(m800_controls); i++) {
 		err = snd_ctl_add(codec->card,
-				snd_soc_cnew(&wm8753_neo1973_controls[i],
+				snd_soc_cnew(&m800_controls[i],
 				codec, NULL));
 		if (err < 0)
 			return err;
@@ -435,8 +455,7 @@ static int gfish_ak4641_init(struct snd_soc_codec *codec)
 	err = snd_soc_dapm_add_routes(codec, dapm_routes,
 				      ARRAY_SIZE(dapm_routes));
 
-#endif
-	//snd_soc_dapm_sync(codec);
+	snd_soc_dapm_sync(codec);
 	return 0;
 }
 
@@ -464,11 +483,10 @@ static struct snd_soc_dai_link gfish_dai[] = {
 	.name = "AK4641",
 	.stream_name = "AK4641 HiFi",
 	.cpu_dai = &s3c24xx_i2s_dai,
-	.codec_dai = &ak4641_dai,
+	.codec_dai = &ak4641_dai[0],
 	.init = gfish_ak4641_init,
 	.ops = &gfish_hifi_ops,
 },
-#if 0
 { /* Voice via BT */
 	.name = "Bluetooth",
 	.stream_name = "Voice",
@@ -476,11 +494,10 @@ static struct snd_soc_dai_link gfish_dai[] = {
 	.codec_dai = &ak4641_dai[AK4641_DAI_VOICE],
 	.ops = &gfish_voice_ops,
 },
-#endif
 };
 
 static struct snd_soc_machine gfish_m800 = {
-	.name = "glofiish_m800",
+	.name = "glofiish M800",
 	.dai_link = gfish_dai,
 	.num_links = ARRAY_SIZE(gfish_dai),
 };
