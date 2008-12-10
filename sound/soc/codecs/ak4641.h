@@ -46,6 +46,8 @@ struct ak4641_setup_data {
 extern struct snd_soc_dai ak4641_dai[];
 extern struct snd_soc_codec_device soc_codec_dev_ak4641;
 
+#define AK4641_DAI_VOICE	1
+
 #if 0
 #define REC_MASK        (SOUND_MASK_LINE | SOUND_MASK_MIC)
 #define DEV_MASK        (REC_MASK | SOUND_MASK_PCM | SOUND_MASK_BASS)
