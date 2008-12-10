@@ -123,7 +123,7 @@ static int ak4641_sync(struct snd_soc_codec *codec)
 #define AK4641_EQUAL(xname, xindex) \
 { .iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, .index = xindex, \
   .info = snd_info_equalizer, .get = snd_get_equalizer, \
-  .put = snd_put_equalizer }
+  .put = snd_put_equalizer, .private_value = xindex }
 
 static int snd_info_equalizer(struct snd_kcontrol *kcontrol,
 			      struct snd_ctl_elem_info *uinfo)
@@ -144,7 +144,7 @@ static int snd_get_equalizer(struct snd_kcontrol *kcontrol,
 	struct ak4641_priv *ak4641 = codec->private_data;
 	u_int16_t reg = AK4641_EQLO;
 	u_int8_t val;
-	int idx = ucontrol->id.index;
+	int idx = kcontrol->private_value;
 
 	if (idx > 4)
 		return -EINVAL;
@@ -168,7 +168,9 @@ static int snd_put_equalizer(struct snd_kcontrol *kcontrol,
 	struct ak4641_priv *ak4641 = codec->private_data;
 	u_int16_t reg = AK4641_EQLO;
 	u_int8_t val, bits;
-	int idx = ucontrol->id.index;
+	int idx = kcontrol->private_value;
+
+	printk(KERN_DEBUG "put_equalizer (idx = %d)\n", idx);
 
 	if (idx > 4)
 		return -EINVAL;
@@ -233,7 +235,7 @@ static const struct snd_kcontrol_new ak4641_snd_controls[] = {
 	SOC_SINGLE("Mic In Volume", AK4641_VOL, 4, 7, 0),
 	SOC_SINGLE("Mic In -4dB", AK4641_VOL, 7, 1, 0),
 
-	AK4641_EQUAL("Equalizer <= 100H z", 0),
+	AK4641_EQUAL("Equalizer <= 100 Hz", 0),
 	AK4641_EQUAL("Equalizer 250 Hz", 1),
 	AK4641_EQUAL("Equalizer 1 kHz", 2),
 	AK4641_EQUAL("Equalizer 3.5 kHz", 3),
@@ -257,7 +259,7 @@ static int ak4641_add_controls(struct snd_soc_codec *codec)
 
 /* Mono 1 Mixer */
 static const struct snd_kcontrol_new ak4641_mono1_mixer_controls[] = {
-	SOC_DAPM_SINGLE("Mic Sidetone Switch", AK4641_SIG1, 4, 1, 0),
+	SOC_DAPM_SINGLE("Mic Mono Sidetone Switch", AK4641_SIG1, 4, 1, 0),
 	SOC_DAPM_SINGLE("Mono Playback Switch", AK4641_SIG1, 5, 1, 0),
 };
 
@@ -351,7 +353,7 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"Stereo Mixer", "Aux Bypass Switch", "AUX In"},
 
 	/* Mono 1 Mixer */
-	{"Mono1 Mixer", "Mic Sidetone Switch", "Input"},
+	{"Mono1 Mixer", "Mic Mono Sidetone Switch", "Input"},
 	{"Mono1 Mixer", "Mono Playback Switch", "DAC"},
 
 	/* Mic */
