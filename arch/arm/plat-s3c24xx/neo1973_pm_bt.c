@@ -30,7 +30,7 @@
 #include <linux/pcf50633.h>
 
 #ifdef CONFIG_MACH_M800
-#include <asm/arch/glofiish.h>
+#include <mach/glofiish.h>
 #endif
 
 #define DRVMSG "FIC Neo1973 Bluetooth Power Management"
@@ -64,6 +64,30 @@ static ssize_t bt_read(struct device *dev, struct device_attribute *attr,
 			if (s3c2410_gpio_getpin(GTA02_GPIO_BT_EN) == 0)
 				ret = 1;
 		}
+	}
+
+	if (!ret) {
+		return strlcpy(buf, "0\n", 3);
+	} else {
+		return strlcpy(buf, "1\n", 3);
+	}
+}
+
+static int bt_rfkill_toggle_radio(void *data, enum rfkill_state state)
+{
+	struct device *dev = data;
+	unsigned long on = (state == RFKILL_STATE_ON);
+	unsigned int vol;
+
+	if (machine_is_neo1973_gta01()) {
+		/* if we are powering up, assert reset, then power,
+		 * then release reset */
+		if (on) {
+			neo1973_gpb_setpin(GTA01_GPIO_BT_EN, 0);
+			pcf50606_voltage_set(pcf50606_global,
+					     PCF50606_REGULATOR_D1REG,
+					     3100);
+		}
 		pcf50606_onoff_set(pcf50606_global,
 				   PCF50606_REGULATOR_D1REG, on);
 		neo1973_gpb_setpin(GTA01_GPIO_BT_EN, on);
@@ -79,13 +103,12 @@ static ssize_t bt_read(struct device *dev, struct device_attribute *attr,
 			PCF50633_REGULATOR_LDO4);
 		dev_info(dev, "GTA02 Set PCF50633 LDO4 = %d\n", vol);
 		neo1973_gpb_setpin(GTA02_GPIO_BT_EN, on);
+	} else if (machine_is_m800()) {
+		s3c2410_gpio_setpin(M800_GPIO_BT_POWER_1, on);
+		s3c2410_gpio_setpin(M800_GPIO_BT_POWER_2, on);
 	}
 
-	if (!ret) {
-		return strlcpy(buf, "0\n", 3);
-	} else {
-		return strlcpy(buf, "1\n", 3);
-	}
+	return 0;
 }
 
 static ssize_t bt_write(struct device *dev, struct device_attribute *attr,
@@ -94,34 +117,10 @@ static ssize_t bt_write(struct device *dev, struct device_attribute *attr,
 	unsigned long on = simple_strtoul(buf, NULL, 10);
 
 	if (!strcmp(attr->attr.name, "power_on")) {
-		if (machine_is_neo1973_gta01()) {
-			/* if we are powering up, assert reset, then power,
-			 * then release reset */
-			if (on) {
-				neo1973_gpb_setpin(GTA01_GPIO_BT_EN, 0);
-				pcf50606_voltage_set(pcf50606_global,
-						     PCF50606_REGULATOR_D1REG,
-						     3100);
-			}
-			pcf50606_onoff_set(pcf50606_global,
-					   PCF50606_REGULATOR_D1REG, on);
-			neo1973_gpb_setpin(GTA01_GPIO_BT_EN, on);
-		} else if (machine_is_neo1973_gta02()) {
-			if (s3c2410_gpio_getpin(GTA02_GPIO_BT_EN) == on)
-				return count;
-			neo1973_gpb_setpin(GTA02_GPIO_BT_EN, !on);
-			pcf50633_voltage_set(pcf50633_global,
-				PCF50633_REGULATOR_LDO4, on ? 3200 : 0);
-			pcf50633_onoff_set(pcf50633_global,
-				PCF50633_REGULATOR_LDO4, on);
-			vol = pcf50633_voltage_get(pcf50633_global,
-				PCF50633_REGULATOR_LDO4);
-			dev_info(dev, "GTA02 Set PCF50633 LDO4 = %d\n", vol);
-			neo1973_gpb_setpin(GTA02_GPIO_BT_EN, on);
-		} else if (machine_is_m800()) {
-			s3c2410_gpio_setpin(M800_GPIO_BT_POWER_1, on);
-			s3c2410_gpio_setpin(M800_GPIO_BT_POWER_2, on);
-		}
+		struct rfkill *rfkill = dev_get_drvdata(dev);
+		enum rfkill_state state = on ? RFKILL_STATE_ON : RFKILL_STATE_OFF;
+		bt_rfkill_toggle_radio(dev, state);
+		rfkill->state = state;
 	} else if (!strcmp(attr->attr.name, "reset")) {
 		/* reset is low-active, so we need to invert */
 		if (machine_is_neo1973_gta01()) {
@@ -189,6 +188,18 @@ static int __init gta01_bt_probe(struct platform_device *pdev)
 		/* we pull reset to low to make sure that the chip doesn't
 	 	 * drain power through the reset line */
 		neo1973_gpb_setpin(GTA02_GPIO_BT_EN, 0);
+	}
+
+	rfkill = rfkill_allocate(&pdev->dev, RFKILL_TYPE_BLUETOOTH);
+
+	rfkill->name = pdev->name;
+	rfkill->data = &pdev->dev;
+	rfkill->state = RFKILL_STATE_OFF;
+	rfkill->toggle_radio = bt_rfkill_toggle_radio;
+
+	if (rfkill_register(rfkill) < 0) {
+		/* We can live if it fails to register, but report it. */
+		dev_dbg(&pdev->dev, DRVMSG ": RFKILL registration failed\n");
 	}
 
 	platform_set_drvdata(pdev, rfkill);
