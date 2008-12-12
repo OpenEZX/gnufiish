@@ -31,8 +31,10 @@
 #include <mach/gta02.h>
 #include <linux/pcf50633.h>
 
-#include <asm/arch/regs-gpioj.h>
-#include <asm/arch/glofiish.h>
+#ifdef CONFIG_MACH_M800
+#include <mach/regs-gpioj.h>
+#include <mach/glofiish.h>
+#endif
 
 struct neo1973_pm_gps_data {
 	int power_was_on;
