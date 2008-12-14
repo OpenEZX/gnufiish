@@ -75,6 +75,7 @@
 #include <plat/pm.h>
 #include <plat/udc.h>
 #include <plat/iic.h>
+#include <plat/glofiish-cpld.h>
 
 #include <linux/jbt6k74.h>
 
@@ -636,6 +637,47 @@ static struct platform_device m800_modem_dev = {
 	.resource	= m800_modem_resources,
 };
 
+static const struct gf_cpld_led_cfg m800_led_cfg[] = {
+	{
+		.reg_offset = 0x10,
+		.bit_offset = 0,
+		.name = "glofiish:red:right",
+	}, {
+		.reg_offset = 0x10,
+		.bit_offset = 1,
+		.name = "glofiish:green:right",
+	}, {
+		.reg_offset = 0x10,
+		.bit_offset = 2,
+		.name = "glofiish:blue:left",
+	}, {
+		.reg_offset = 0x10,
+		.bit_offset = 2,
+		.name = "glofiish:orange:left",
+	}, {
+		.reg_offset = 0x14,
+		.bit_offset = 0,
+		.name = "glofiish:white:left",
+	}, {
+		.reg_offset = 0x14,
+		.bit_offset = 2,
+		.name = "glofiish::vibrator",
+	}, {
+		.reg_offset = 0x16,
+		.bit_offset = 2,
+		.name = "glofiish:white:camera-normal",
+	}, {
+		.reg_offset = 0x16,
+		.bit_offset = 3,
+		.name = "glofiish:white:camera-flash",
+	},
+};
+
+static struct gf_cpld_pdata m800_cpld_pdata = {
+	.led_num = ARRAY_SIZE(m800_led_cfg),
+	.led_cfgs = m800_led_cfg,
+};
+
 static struct resource m800_cpld_resources[] = {
 	[0] = {
 		.start	= S3C2410_CS1,
@@ -648,6 +690,9 @@ static struct platform_device m800_cpld_dev = {
 	.name		= "gfish-cpld",
 	.num_resources	= ARRAY_SIZE(m800_cpld_resources),
 	.resource	= m800_cpld_resources,
+	.dev		= {
+		.platform_data	= &m800_cpld_pdata,
+	},
 };
 
 static void __init glofiish_map_io(void)

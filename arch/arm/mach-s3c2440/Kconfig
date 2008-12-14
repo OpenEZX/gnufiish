@@ -104,6 +104,7 @@ config NEO1973_GTA02_2440
 config MACH_M800
 	bool "E-TEN glofiish M800/X800"
 	select CPU_S3C2442
+	select MACH_GLOFIISH
 	select MACH_NEO1973
 	help
 	   Say Y here if you are using the E-TEN glofiish M800/X800.
