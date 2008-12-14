@@ -590,11 +590,11 @@ static struct resource m800_button_resources[] = {
 		.start = M800_GPIO_nKEY_CAMERA,
 		.end   = M800_GPIO_nKEY_CAMERA,
 	},
-	[3] = {
+	[2] = {
 		.start = M800_GPIO_nKEY_RECORD,
 		.end   = M800_GPIO_nKEY_RECORD,
 	},
-	[2] = {
+	[3] = {
 		.start = M800_GPIO_SLIDE,
 		.end   = M800_GPIO_SLIDE,
 	},
