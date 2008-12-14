@@ -53,3 +53,5 @@ obj-$(CONFIG_MACH_NEO1973)	+= neo1973_version.o \
 				   neo1973_shadow.o \
 				   neo1973_pm_resume_reason.o \
 				   neo1973_memconfig.o
+
+obj-$(CONFIG_GLOFIISH_CPLD)	+= glofiish-cpld.o

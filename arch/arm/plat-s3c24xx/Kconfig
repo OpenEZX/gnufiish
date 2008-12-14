@@ -89,4 +89,17 @@ config MACH_NEO1973
 	help
 	  Common machine code for Neo1973 hardware
 
+config MACH_GLOFIISH
+	bool
+	help
+	  Common machine code for E-TEN glofiish hardware
+
+config GLOFIISH_CPLD
+	tristate "E-TEN CPLD driver"
+	depends on MACH_GLOFIISH
+	select LEDS_CLASS
+	help
+	  This driver supports the CPLD found in some glofiish devices.  Currently
+	  only the LED function is supported.
+
 endif
