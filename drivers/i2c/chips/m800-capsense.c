@@ -1,4 +1,4 @@
-/* E-TEN glofiish M800 CPLD driver
+/* E-TEN glofiish M800 CapSense driver
  *
  * (C) 2008 by Harald Welte <laforge@gnufiish.org>,
  * All rights reserved.
@@ -34,7 +34,7 @@
 #include <linux/delay.h>
 
 #define KEYSTATE_SIZE	12
-struct gf_cpld_data {
+struct m800_caps_data {
 	struct i2c_client *client;
 	int irq;
 	int working;
@@ -48,7 +48,7 @@ struct gf_cpld_data {
 
 static unsigned short normal_i2c[] = { 0x30, I2C_CLIENT_END };
 
-I2C_CLIENT_INSMOD_1(gfish_cpld);
+I2C_CLIENT_INSMOD_1(m800_caps);
 
 #define GFISH_KS5_AP_END	0x01
 #define GFISH_KS5_AP_1		0x02
@@ -59,7 +59,7 @@ I2C_CLIENT_INSMOD_1(gfish_cpld);
 #define GFISH_KS5_AP_SOFT1	0x40
 #define GFISH_KS5_AP_OK		0x80
 
-static int set_led(struct gf_cpld_data *gc, int on)
+static int set_led(struct m800_caps_data *gc, int on)
 {
 	if (on)
 		gc->keystate_buf[1] = 0x01;
@@ -69,7 +69,7 @@ static int set_led(struct gf_cpld_data *gc, int on)
 	return i2c_master_send(gc->client, gc->keystate_buf, 5);
 }
 
-static int get_start_thresh(struct gf_cpld_data *gc)
+static int get_start_thresh(struct m800_caps_data *gc)
 {
 	int ret;
 	u_int8_t aa = 0xaa;
@@ -80,7 +80,7 @@ static int get_start_thresh(struct gf_cpld_data *gc)
 	/* FIXME: what to do with it? */
 }
 
-static int set_power(struct gf_cpld_data *gc)
+static int set_power(struct m800_caps_data *gc)
 {
 	int ret;
 	struct device *dev = &gc->client->dev;
@@ -100,7 +100,7 @@ static int set_power(struct gf_cpld_data *gc)
 	return ret;
 }
 
-static void process_ks5(struct gf_cpld_data *gc, u_int8_t ks5)
+static void process_ks5(struct m800_caps_data *gc, u_int8_t ks5)
 {
 	int pressed = 1;
 
@@ -129,10 +129,10 @@ static void process_ks5(struct gf_cpld_data *gc, u_int8_t ks5)
 		input_report_key(gc->input_dev, KEY_OK, pressed);
 }
 
-static void gf_cpld_work(struct work_struct *work)
+static void m800_caps_work(struct work_struct *work)
 {
-	struct gf_cpld_data *gc =
-			container_of(work, struct gf_cpld_data, work);
+	struct m800_caps_data *gc =
+			container_of(work, struct m800_caps_data, work);
 	struct device *dev = &gc->client->dev;
 	u_int8_t ks[KEYSTATE_SIZE];
 	int ret; 
@@ -152,7 +152,7 @@ static void gf_cpld_work(struct work_struct *work)
 		goto out;
 	}
 
-	dev_dbg(dev, "gf-cpld: got 0x%02x, 0x%02x, 0x%02x, "
+	dev_dbg(dev, "gf-caps: got 0x%02x, 0x%02x, 0x%02x, "
 		"0x%02x, 0x%02x, 0x%02x, 0x%02x, 0x%02x, "
 		"(0x%02x, 0x%02x, 0x%02x, 0x%02x)\n",
 		ks[0], ks[1], ks[2], ks[3], ks[4], ks[5], ks[6],
@@ -171,9 +171,9 @@ out:
 	mutex_unlock(&gc->working_lock);
 }
 
-static irqreturn_t gf_cpld_irq(int irq, void *_gc)
+static irqreturn_t m800_caps_irq(int irq, void *_gc)
 {
-	struct gf_cpld_data *gc = _gc;
+	struct m800_caps_data *gc = _gc;
 	struct device *dev = &gc->client->dev;
 
 	dev_dbg(dev,"entering(irq=%u, pcf=%p)\n", irq, _gc);
@@ -185,10 +185,10 @@ static irqreturn_t gf_cpld_irq(int irq, void *_gc)
 	return IRQ_HANDLED;
 }
 
-static int gf_cpld_probe(struct i2c_client *client,
+static int m800_caps_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
-	struct gf_cpld_data *gc;
+	struct m800_caps_data *gc;
 	int err;
 
 	if (!(gc = kzalloc(sizeof(*gc), GFP_KERNEL)))
@@ -200,7 +200,7 @@ static int gf_cpld_probe(struct i2c_client *client,
 	gc->client = client;
 	client->flags |= I2C_M_IGNORE_NAK;
 	mutex_init(&gc->working_lock);
-	INIT_WORK(&gc->work, gf_cpld_work);
+	INIT_WORK(&gc->work, m800_caps_work);
 
 	gc->input_dev = input_allocate_device();
 	if (!gc->input_dev) {
@@ -237,7 +237,7 @@ static int gf_cpld_probe(struct i2c_client *client,
 }
 	//set_power(gc);
 
-	err = request_irq(gc->irq, gf_cpld_irq, 0, "gf-cpld", gc);
+	err = request_irq(gc->irq, m800_caps_irq, 0, "gf-caps", gc);
 	if (err < 0)
 		goto exit_input;
 
@@ -254,9 +254,9 @@ exit_free:
 }
 
 
-static int __devexit gf_cpld_remove(struct i2c_client *client)
+static int __devexit m800_caps_remove(struct i2c_client *client)
 {
-	struct gf_cpld_data *gc = i2c_get_clientdata(client);
+	struct m800_caps_data *gc = i2c_get_clientdata(client);
 
 	free_irq(gc->irq, gc);
 	input_unregister_device(gc->input_dev);
@@ -265,38 +265,38 @@ static int __devexit gf_cpld_remove(struct i2c_client *client)
 	return 0;
 }
 
-struct i2c_device_id  gf_cpld_idtable[] = {
-	{ "gf_cpld", 0 },
+struct i2c_device_id  m800_caps_idtable[] = {
+	{ "m800_capsense", 0 },
 	{ }
 };
 
-MODULE_DEVICE_TABLE(i2c, gf_cpld_idtable);
+MODULE_DEVICE_TABLE(i2c, m800_caps_idtable);
 
-static struct i2c_driver gf_cpld_driver = {
+static struct i2c_driver m800_caps_driver = {
 	.driver = {
 		.owner	= THIS_MODULE,
-		.name 	= "gf-cpld",
+		.name 	= "m800-capsense",
 	},
-	.id_table = gf_cpld_idtable,
-	.probe = gf_cpld_probe,
-	.remove = __devexit_p(gf_cpld_remove),
+	.id_table = m800_caps_idtable,
+	.probe = m800_caps_probe,
+	.remove = __devexit_p(m800_caps_remove),
 };
 
-static int __init gf_cpld_init(void)
+static int __init m800_caps_init(void)
 {
 	int rc;
 
-	return i2c_add_driver(&gf_cpld_driver);
+	return i2c_add_driver(&m800_caps_driver);
 }
 
-static void gf_cpld_exit(void)
+static void m800_caps_exit(void)
 {
-	i2c_del_driver(&gf_cpld_driver);
+	i2c_del_driver(&m800_caps_driver);
 }
 
-MODULE_DESCRIPTION("I2C driver for E-TEN glofiish M800 CPLD");
+MODULE_DESCRIPTION("I2C driver for E-TEN glofiish M800 capsense buttons");
 MODULE_AUTHOR("Harald Welte <laforge@gnufiish.org>");
 MODULE_LICENSE("GPL");
 
-module_init(gf_cpld_init);
-module_exit(gf_cpld_exit);
+module_init(m800_caps_init);
+module_exit(m800_caps_exit);
