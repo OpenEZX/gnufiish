@@ -665,11 +665,11 @@ static const struct gf_cpld_led_cfg m800_led_cfg[] = {
 	}, {
 		.reg_offset = 0x16,
 		.bit_offset = 2,
-		.name = "glofiish:white:camera-normal",
+		.name = "glofiish:white:light",
 	}, {
 		.reg_offset = 0x16,
 		.bit_offset = 3,
-		.name = "glofiish:white:camera-flash",
+		.name = "glofiish:white:flash",
 	},
 };
 
