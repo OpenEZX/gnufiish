@@ -203,6 +203,31 @@ static void finish_leds(struct gf_cpld *gc)
 /***********************************************************************/
 /* Keyboard support */
 
+/* event from the input core layer up to us */
+static int kbd_event(struct input_dev *dev, unsigned int type,
+		     unsigned int code, int value)
+{
+	struct gf_cpld *cpld = input_get_drvdata(dev);
+	int set;
+
+	if (type != EV_LED)
+		return 0;
+
+	/* We just pass the LED bits from the input core to our
+	 * LED triggers.  We never trigger LED's ourselves */
+
+	set = test_bit(LED_CAPSL, dev->led);
+	led_trigger_event(&cpld->kbd.ledt_caps, set);
+
+	set = test_bit(LED_COMPOSE, dev->led);
+	led_trigger_event(&cpld->kbd.ledt_fn, set);
+		
+	set = test_bit(LED_MISC, dev->led);
+	led_trigger_event(&cpld->kbd.ledt_bl, set);
+
+	return 0;
+}
+
 static u_int16_t gf_kbd_keycode[NR_SCANCODES] = {
 	0,
 	KEY_Q, KEY_W, KEY_E, KEY_R, KEY_T, KEY_Y, KEY_U, KEY_I,
@@ -366,10 +391,14 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 		indev->name = "glofiish keyboard";
 		indev->phys = "CPLD";
 		indev->id.bustype = 0;
-		indev->evbit[0] = BIT(EV_KEY) | BIT(EV_REP);
+		indev->evbit[0] = BIT(EV_KEY) | BIT(EV_REP) | BIT(EV_LED);
 		indev->keycode = cpld->kbd.keycode;
 		indev->keycodesize = sizeof(u_int16_t);
 		indev->keycodemax = ARRAY_SIZE(gf_kbd_keycode);
+		indev->event = kbd_event;
+		indev->ledbit[0] = BIT(LED_CAPSL) | BIT(LED_MISC) | BIT(LED_COMPOSE);
+
+		input_set_drvdata(indev, cpld);
 
 		memcpy(cpld->kbd.keycode, gf_kbd_keycode, sizeof(cpld->kbd.keycode));
 		for (i = 0; i < ARRAY_SIZE(gf_kbd_keycode); i++)
