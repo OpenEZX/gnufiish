@@ -227,7 +227,9 @@ static void parse_kbd_regs(struct gf_cpld *cpld, u_int16_t *regs)
 	u_int16_t keycode;
 	unsigned int num_pressed = 0;
 
+	printk(KERN_DEBUG "parse_kbd_regs: ");
 	for (reg = 0; reg < NUM_KBD_REGS; reg++) {
+		printk("0x%02x ", regs[reg]);
 		for (bit = 0; bit < KBD_REG_BITS; bit++) {
 			int pressed = 0;
 
@@ -245,6 +247,7 @@ static void parse_kbd_regs(struct gf_cpld *cpld, u_int16_t *regs)
 			input_report_key(cpld->kbd.input_dev, keycode, pressed);
 		}
 	}
+	printk("\n");
 
 	input_sync(cpld->kbd.input_dev);
 }
@@ -343,23 +346,17 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 		struct input_dev *indev;
 		int rc, i;
 
-		rc = request_irq(cpld->kbd.irq, cpld_kbd_irq, 0, "glofiish-cpld-kbd", cpld);
-		if (rc < 0) {
-			dev_err(&pdev->dev, "cannot request kbd irq\n");
-			goto out_unmap;
-		}
-
 		res = platform_get_resource_byname(pdev, 0, "kbd_scan_en");
 		if (!res) {
 			dev_err(&pdev->dev, "no keyboard scan enable GPIO\n");
-			goto out_free_irq;
+			goto out_unmap;
 		}
 		cpld->kbd.gpio_scan_en = res->start;
 
 		indev = input_allocate_device();
 		if (!indev) {
 			dev_err(&pdev->dev, "cannot allocate input device\n");
-			goto out_free_irq;
+			goto out_unmap;
 		}
 		cpld->kbd.input_dev = indev;
 		indev->name = "glofiish keyboard";
@@ -381,20 +378,34 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 			goto out_free_indev;
 		}
 
+		/* IRQF_TRIGGER_FALLING */
+		rc = request_irq(cpld->kbd.irq, cpld_kbd_irq,
+				 IRQF_SAMPLE_RANDOM | IRQF_SHARED,
+				 "glofiish-cpld-kbd", cpld);
+		if (rc < 0) {
+			dev_err(&pdev->dev, "cannot request kbd irq\n");
+			goto out_unreg_indev;
+		}
 	}
 
 	/* Initialize LED function */
 	if (init_leds(cpld, pdata) < 0)
-		goto out_unmap;
+		goto out_free_irq;
 
 	return 0;
 
-out_free_indev:
-	if (cpld->kbd.input_dev)
-		input_free_device(cpld->kbd.input_dev);
 out_free_irq:
 	if (cpld->kbd.irq)
 		free_irq(cpld->kbd.irq, cpld);
+out_unreg_indev:
+	if (cpld->kbd.input_dev) {
+		input_unregister_device(cpld->kbd.input_dev);
+		/* input_unregister_device free()'s the input device */
+		cpld->kbd.input_dev = NULL;
+	}
+out_free_indev:
+	if (cpld->kbd.input_dev)
+		input_free_device(cpld->kbd.input_dev);
 out_unmap:
 	iounmap(cpld->iobase);
 out_freemem:
@@ -414,7 +425,7 @@ static int gf_cpld_remove(struct platform_device *pdev)
 
 	if (cpld->kbd.irq) {
 		input_unregister_device(cpld->kbd.input_dev);
-		input_free_device(cpld->kbd.input_dev);
+		/* input_unregister_device free()'s the input device */
 		free_irq(cpld->kbd.irq, cpld);
 	}
 
