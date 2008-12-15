@@ -232,8 +232,9 @@ static u_int16_t gf_kbd_keycode[NR_SCANCODES] = {
 	0,
 	KEY_Q, KEY_W, KEY_E, KEY_R, KEY_T, KEY_Y, KEY_U, KEY_I,
 	KEY_A, KEY_S, KEY_D, KEY_F, KEY_G, KEY_H, KEY_J, KEY_K,
-	KEY_LEFTSHIFT, KEY_Z, KEY_X, KEY_C, KEY_V, KEY_B, KEY_N, KEY_M,
-	KEY_LEFTALT, KEY_MENU, KEY_OK, KEY_TAB, KEY_SPACE, 0, KEY_DOT, KEY_LEFT,
+	//KEY_LEFTSHIFT, KEY_Z, KEY_X, KEY_C, KEY_V, KEY_B, KEY_N, KEY_M,
+	KEY_CAPSLOCK, KEY_Z, KEY_X, KEY_C, KEY_V, KEY_B, KEY_N, KEY_M,
+	KEY_COMPOSE, KEY_MENU, KEY_OK, KEY_TAB, KEY_SPACE, 0, KEY_DOT, KEY_LEFT,
 	KEY_O, KEY_L, KEY_UP, KEY_DOWN, KEY_P, KEY_BACKSPACE, KEY_ENTER, KEY_RIGHT,
 	KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_PROG1, KEY_PROG2, 0, 0, 0, 0,
 };
@@ -287,15 +288,15 @@ static irqreturn_t cpld_kbd_irq(int irq, void *_cpld)
 	u_int16_t regs[NUM_KBD_REGS];
 
 	/* enable keyboard scanning */
-	s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 1);
+	//s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 1);
 	
-	udelay(20);
+	//udelay(200);
 
 	/* read actual keyboard scan matrix registers */
 	read_kbd_regs(cpld, regs);
 
 	/* disable keyboard scanning */
-	s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 0);
+	//s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 0);
 
 	parse_kbd_regs(cpld, regs);
 
@@ -405,16 +406,10 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 			set_bit(cpld->kbd.keycode[i], indev->keybit);
 		clear_bit(0, indev->keybit);
 
-		rc = input_register_device(indev);
-		if (rc) {
-			dev_err(&pdev->dev, "cannot register input device\n");
-			goto out_free_indev;
-		}
-
 		cpld->kbd.ledt_bl.name = "kbd-backlight";
 		rc = led_trigger_register(&cpld->kbd.ledt_bl);	
 		if (rc < 0)
-			goto out_unreg_indev;
+			goto out_free_indev;
 
 		cpld->kbd.ledt_fn.name = "kbd-fn";
 		rc = led_trigger_register(&cpld->kbd.ledt_fn);	
@@ -426,14 +421,23 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 		if (rc < 0)
 			goto out_unreg_fn;
 
+		rc = input_register_device(indev);
+		if (rc) {
+			dev_err(&pdev->dev, "cannot register input device\n");
+			goto out_unreg_caps;
+		}
+
 		/* IRQF_TRIGGER_FALLING */
 		rc = request_irq(cpld->kbd.irq, cpld_kbd_irq,
 				 IRQF_SAMPLE_RANDOM | IRQF_SHARED,
 				 "glofiish-cpld-kbd", cpld);
 		if (rc < 0) {
 			dev_err(&pdev->dev, "cannot request kbd irq\n");
-			goto out_unreg_caps;
+			goto out_unreg_indev;
 		}
+
+		/* FIXME: only enable scanning after interrupt */
+		s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 1);
 	}
 
 	/* Initialize LED function */
@@ -445,18 +449,18 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 out_free_irq:
 	if (cpld->kbd.irq)
 		free_irq(cpld->kbd.irq, cpld);
-out_unreg_caps:
-	led_trigger_unregister(&cpld->kbd.ledt_caps);	
-out_unreg_fn:
-	led_trigger_unregister(&cpld->kbd.ledt_fn);	
-out_unreg_bl:
-	led_trigger_unregister(&cpld->kbd.ledt_bl);	
 out_unreg_indev:
 	if (cpld->kbd.input_dev) {
 		input_unregister_device(cpld->kbd.input_dev);
 		/* input_unregister_device free()'s the input device */
 		cpld->kbd.input_dev = NULL;
 	}
+out_unreg_caps:
+	led_trigger_unregister(&cpld->kbd.ledt_caps);	
+out_unreg_fn:
+	led_trigger_unregister(&cpld->kbd.ledt_fn);	
+out_unreg_bl:
+	led_trigger_unregister(&cpld->kbd.ledt_bl);	
 out_free_indev:
 	if (cpld->kbd.input_dev)
 		input_free_device(cpld->kbd.input_dev);
@@ -478,6 +482,8 @@ static int gf_cpld_remove(struct platform_device *pdev)
 	finish_leds(cpld);
 
 	if (cpld->kbd.irq) {
+		s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 0);
+
 		free_irq(cpld->kbd.irq, cpld);
 
 		input_unregister_device(cpld->kbd.input_dev);
