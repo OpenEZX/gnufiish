@@ -206,7 +206,7 @@ static u_int16_t gf_kbd_keycode[NR_SCANCODES] = {
 	KEY_LEFTSHIFT, KEY_Z, KEY_X, KEY_C, KEY_V, KEY_B, KEY_N, KEY_M,
 	KEY_LEFTALT, KEY_MENU, KEY_OK, KEY_TAB, KEY_SPACE, 0, KEY_DOT, KEY_LEFT,
 	KEY_O, KEY_L, KEY_UP, KEY_DOWN, KEY_P, KEY_BACKSPACE, KEY_ENTER, KEY_RIGHT,
-	0, 0, KEY_PROG1, KEY_PROG2, 0, 0, 0, 0,
+	KEY_VOLUMEUP, KEY_VOLUMEDOWN, KEY_PROG1, KEY_PROG2, 0, 0, 0, 0,
 };
 
 static void read_kbd_regs(struct gf_cpld *cpld, u_int16_t *regs)
