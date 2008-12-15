@@ -30,6 +30,7 @@
 #include <linux/input.h>
 #include <linux/irq.h>
 #include <linux/delay.h>
+#include <linux/leds.h>
 
 #include <asm/mach-types.h>
 #include <asm/io.h>
@@ -71,6 +72,9 @@ struct gf_cpld {
 		unsigned int gpio_scan_en;
 		struct input_dev *input_dev;
 		u_int16_t keycode[NR_SCANCODES];
+		struct led_trigger ledt_bl;
+		struct led_trigger ledt_fn;
+		struct led_trigger ledt_caps;
 	} kbd;
 };
 
@@ -378,13 +382,28 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 			goto out_free_indev;
 		}
 
+		cpld->kbd.ledt_bl.name = "kbd-backlight";
+		rc = led_trigger_register(&cpld->kbd.ledt_bl);	
+		if (rc < 0)
+			goto out_unreg_indev;
+
+		cpld->kbd.ledt_fn.name = "kbd-fn";
+		rc = led_trigger_register(&cpld->kbd.ledt_fn);	
+		if (rc < 0)
+			goto out_unreg_bl;
+
+		cpld->kbd.ledt_caps.name = "kbd-caps";
+		rc = led_trigger_register(&cpld->kbd.ledt_caps);	
+		if (rc < 0)
+			goto out_unreg_fn;
+
 		/* IRQF_TRIGGER_FALLING */
 		rc = request_irq(cpld->kbd.irq, cpld_kbd_irq,
 				 IRQF_SAMPLE_RANDOM | IRQF_SHARED,
 				 "glofiish-cpld-kbd", cpld);
 		if (rc < 0) {
 			dev_err(&pdev->dev, "cannot request kbd irq\n");
-			goto out_unreg_indev;
+			goto out_unreg_caps;
 		}
 	}
 
@@ -397,6 +416,12 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 out_free_irq:
 	if (cpld->kbd.irq)
 		free_irq(cpld->kbd.irq, cpld);
+out_unreg_caps:
+	led_trigger_unregister(&cpld->kbd.ledt_caps);	
+out_unreg_fn:
+	led_trigger_unregister(&cpld->kbd.ledt_fn);	
+out_unreg_bl:
+	led_trigger_unregister(&cpld->kbd.ledt_bl);	
 out_unreg_indev:
 	if (cpld->kbd.input_dev) {
 		input_unregister_device(cpld->kbd.input_dev);
@@ -424,9 +449,14 @@ static int gf_cpld_remove(struct platform_device *pdev)
 	finish_leds(cpld);
 
 	if (cpld->kbd.irq) {
+		free_irq(cpld->kbd.irq, cpld);
+
 		input_unregister_device(cpld->kbd.input_dev);
 		/* input_unregister_device free()'s the input device */
-		free_irq(cpld->kbd.irq, cpld);
+
+		led_trigger_unregister(&cpld->kbd.ledt_caps);	
+		led_trigger_unregister(&cpld->kbd.ledt_fn);	
+		led_trigger_unregister(&cpld->kbd.ledt_bl);	
 	}
 
 	iounmap(cpld->iobase);
