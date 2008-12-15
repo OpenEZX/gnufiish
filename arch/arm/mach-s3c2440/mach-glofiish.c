@@ -684,6 +684,16 @@ static struct resource m800_cpld_resources[] = {
 		.end	= S3C2410_CS1 + 0x1000000 - 1,
 		.flags	= IORESOURCE_MEM,
 	},
+	[1] = {
+		.start	= M800_IRQ_CPLD_KEY,
+		.end	= M800_IRQ_CPLD_KEY,
+		.flags	= IORESOURCE_IRQ,
+	},
+	[2] = {
+		.start	= M800_GPIO_KBD_SCAN_EN,
+		.end	= M800_GPIO_KBD_SCAN_EN,
+		.name	= "kbd_scan_en",
+	},
 };
 
 static struct platform_device m800_cpld_dev = {
