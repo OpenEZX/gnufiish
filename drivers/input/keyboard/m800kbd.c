@@ -1,5 +1,5 @@
 /*
- * Keyboard driver for E-TEN M800 GSM phone
+ * Keyboard driver for E-TEN glofiish M800 GSM phone buttons
  *
  * (C) 2008 by Harald Welte <laforge@gnumonks.org>
  * All rights reserved.
@@ -21,6 +21,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
+#include <linux/leds.h>
 
 #include <asm/gpio.h>
 #include <asm/mach-types.h>
@@ -33,6 +34,7 @@ struct m800kbd {
 	int hp_irq_count_in_work;
 	int hp_irq_count;
 	int jack_irq;
+	struct led_trigger slide_ledtrig;
 };
 
 static irqreturn_t m800kbd_power_irq(int irq, void *dev_id)
@@ -75,6 +77,8 @@ static irqreturn_t m800kbd_slide_irq(int irq, void *dev_id)
 	int key_pressed = gpio_get_value(irq_to_gpio(irq));
 	input_report_key(m800kbd_data->input, SW_LID, key_pressed);
 	input_sync(m800kbd_data->input);
+
+	led_trigger_event(&m800kbd_data->slide_ledtrig, key_pressed);
 
 	return IRQ_HANDLED;
 }
@@ -219,7 +223,7 @@ static int m800kbd_probe(struct platform_device *pdev)
 
 	//INIT_WORK(&m800kbd->work, m800kbd_debounce_jack);
 
-	input_dev->name = "M800 Buttons";
+	input_dev->name = "E-TEN glofiish M800 Buttons";
 	input_dev->phys = "m800kbd/input0";
 	input_dev->id.bustype = BUS_HOST;
 	input_dev->id.vendor = 0x0001;
@@ -234,6 +238,11 @@ static int m800kbd_probe(struct platform_device *pdev)
 	set_bit(KEY_CAMERA, input_dev->keybit);
 	set_bit(KEY_RECORD, input_dev->keybit);
 
+	m800kbd->slide_ledtrig.name = "kbd-slide";
+	rc = led_trigger_register(&m800kbd->slide_ledtrig);
+	if (rc)
+		goto out_ledtrig;
+
 	rc = input_register_device(m800kbd->input);
 	if (rc)
 		goto out_register;
@@ -242,7 +251,7 @@ static int m800kbd_probe(struct platform_device *pdev)
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 			"M800 Power button", m800kbd)) {
 		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_power);
-		goto out_aux;
+		goto out_power;
 	}
 
 	enable_irq_wake(irq_power);
@@ -251,34 +260,38 @@ static int m800kbd_probe(struct platform_device *pdev)
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 			"M800 Camera button", m800kbd)) {
 		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_cam);
-		goto out_hold;
+		goto out_cam;
 	}
 
 	if (request_irq(irq_rec, m800kbd_rec_irq, IRQF_DISABLED |
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 			"M800 Record button", m800kbd)) {
 		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_rec);
-		goto out_hold;
+		goto out_record;
 	}
 
 	if (request_irq(irq_slide, m800kbd_slide_irq, IRQF_DISABLED |
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
 			"M800 Slide", m800kbd)) {
 		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_slide);
-		goto out_jack;
+		goto out_slide;
 	}
 	enable_irq_wake(irq_slide);
 
 	return 0;
 
-out_jack:
+out_slide:
+	free_irq(irq_rec, m800kbd);
+out_record:
 	free_irq(irq_cam, m800kbd);
-out_hold:
+out_cam:
 	free_irq(irq_power, m800kbd);
-out_aux:
+out_power:
 	input_unregister_device(m800kbd->input);
 out_register:
 	input_free_device(m800kbd->input);
+out_ledtrig:
+	led_trigger_unregister(&m800kbd->slide_ledtrig);
 	platform_set_drvdata(pdev, NULL);
 	kfree(m800kbd);
 
@@ -294,7 +307,8 @@ static int m800kbd_remove(struct platform_device *pdev)
 	free_irq(gpio_to_irq(pdev->resource[0].start), m800kbd);
 
 	input_unregister_device(m800kbd->input);
-	input_free_device(m800kbd->input);
+	/* input_unregister_device() free's the data */
+	led_trigger_unregister(&m800kbd->slide_ledtrig);
 	platform_set_drvdata(pdev, NULL);
 	kfree(m800kbd);
 
