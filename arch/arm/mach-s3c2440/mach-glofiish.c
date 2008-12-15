@@ -559,16 +559,43 @@ static struct platform_device gta02_button_dev = {
 
 /* LED for the keyboard backlight */
 static struct s3c24xx_led_platdata m800_kbd_led_pdata = {
-	.name		= "keyboard_backlight",
+	.name		= "kbd_backlight",
 	.gpio		= M800_GPIO_KBDLIGHT,
-	.def_trigger	= "",
+	.def_trigger	= "kbd-backlight",
 };
 
 static struct platform_device m800_kbd_led = {
 	.name		= "s3c24xx_led",
-	.id		= 1,
 	.dev		= {
 		.platform_data	= &m800_kbd_led_pdata,
+	},
+};
+
+/* LED for the keyboard Fn LED */
+static struct s3c24xx_led_platdata m800_kbd_fn_led_pdata = {
+	.name		= "kbd_fn",
+	.gpio		= M800_GPIO_LED_KBD_Fn,
+	.def_trigger	= "kbd-fn",
+};
+
+static struct platform_device m800_kbd_fn_led = {
+	.name		= "s3c24xx_led",
+	.dev		= {
+		.platform_data	= &m800_kbd_fn_led_pdata,
+	},
+};
+
+/* LED for the keyboard Caps LED */
+static struct s3c24xx_led_platdata m800_kbd_caps_led_pdata = {
+	.name		= "kbd_caps",
+	.gpio		= M800_GPIO_LED_KBD_Caps,
+	.def_trigger	= "kbd-caps",
+};
+
+static struct platform_device m800_kbd_caps_led = {
+	.name		= "s3c24xx_led",
+	.dev		= {
+		.platform_data	= &m800_kbd_caps_led_pdata,
 	},
 };
 
@@ -747,6 +774,8 @@ static struct platform_device *glofiish_devices[] __initdata = {
 	&s3c_device_nand,
 	&s3c_device_ts,
 	&m800_kbd_led,
+	&m800_kbd_fn_led,
+	&m800_kbd_caps_led,
 };
 
 __setup("hardware_ecc=", hardware_ecc_setup);
