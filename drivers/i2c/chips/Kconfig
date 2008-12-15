@@ -225,8 +225,8 @@ config PCA9632
 	  This driver can also be built as a module.  If so, the module
 	  will be called pca9632.
 
-config GFISH_CPLD
-	tristate "E-TEN glofiish M800 CPLD driver"
+config M800_CAPSENSE
+	tristate "E-TEN glofiish M800 CapSense driver"
 	depends on I2C
 	help
 	  If you say yes here you get support for the E-TEN glofiish CPLD
