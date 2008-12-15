@@ -499,64 +499,6 @@ static struct glamo_spi_info glamo_spi_cfg = {
 };
 #endif /* 0 */
 
-#if 0
-static struct resource gta02_vibrator_resources[] = {
-	[0] = {
-		.start	= GTA02_GPIO_VIBRATOR_ON,
-		.end	= GTA02_GPIO_VIBRATOR_ON,
-	},
-};
-
-static struct platform_device gta02_vibrator_dev = {
-	.name		= "neo1973-vibrator",
-	.num_resources	= ARRAY_SIZE(gta02_vibrator_resources),
-	.resource	= gta02_vibrator_resources,
-};
-
-static struct resource gta02_led_resources[] = {
-	{
-		.name	= "gta02-power:orange",
-		.start	= GTA02_GPIO_PWR_LED1,
-		.end	= GTA02_GPIO_PWR_LED1,
-	}, {
-		.name	= "gta02-power:blue",
-		.start	= GTA02_GPIO_PWR_LED2,
-		.end	= GTA02_GPIO_PWR_LED2,
-	}, {
-		.name	= "gta02-aux:red",
-		.start	= GTA02_GPIO_AUX_LED,
-		.end	= GTA02_GPIO_AUX_LED,
-	},
-};
-
-struct platform_device gta02_led_dev = {
-	.name		= "gta02-led",
-	.num_resources	= ARRAY_SIZE(gta02_led_resources),
-	.resource	= gta02_led_resources,
-};
-
-static struct resource gta02_button_resources[] = {
-	[0] = {
-		.start = GTA02_GPIO_AUX_KEY,
-		.end   = GTA02_GPIO_AUX_KEY,
-	},
-	[1] = {
-		.start = GTA02_GPIO_HOLD_KEY,
-		.end   = GTA02_GPIO_HOLD_KEY,
-	},
-	[2] = {
-		.start = GTA02_GPIO_JACK_INSERT,
-		.end   = GTA02_GPIO_JACK_INSERT,
-	},
-};
-
-static struct platform_device gta02_button_dev = {
-	.name		= "neo1973-button",
-	.num_resources	= ARRAY_SIZE(gta02_button_resources),
-	.resource	= gta02_button_resources,
-};
-#endif
-
 /* LED for the keyboard backlight */
 static struct s3c24xx_led_platdata m800_kbd_led_pdata = {
 	.name		= "kbd_backlight",
@@ -566,6 +508,7 @@ static struct s3c24xx_led_platdata m800_kbd_led_pdata = {
 
 static struct platform_device m800_kbd_led = {
 	.name		= "s3c24xx_led",
+	.id		= 0,
 	.dev		= {
 		.platform_data	= &m800_kbd_led_pdata,
 	},
@@ -580,6 +523,7 @@ static struct s3c24xx_led_platdata m800_kbd_fn_led_pdata = {
 
 static struct platform_device m800_kbd_fn_led = {
 	.name		= "s3c24xx_led",
+	.id		= 1,
 	.dev		= {
 		.platform_data	= &m800_kbd_fn_led_pdata,
 	},
@@ -594,6 +538,7 @@ static struct s3c24xx_led_platdata m800_kbd_caps_led_pdata = {
 
 static struct platform_device m800_kbd_caps_led = {
 	.name		= "s3c24xx_led",
+	.id		= 2,
 	.dev		= {
 		.platform_data	= &m800_kbd_caps_led_pdata,
 	},
