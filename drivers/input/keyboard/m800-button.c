@@ -26,7 +26,7 @@
 #include <asm/gpio.h>
 #include <asm/mach-types.h>
 
-struct m800kbd {
+struct m800btn {
 	struct input_dev *input;
 	unsigned int suspended;
 	struct work_struct work;
@@ -37,56 +37,56 @@ struct m800kbd {
 	struct led_trigger slide_ledtrig;
 };
 
-static irqreturn_t m800kbd_power_irq(int irq, void *dev_id)
+static irqreturn_t m800btn_power_irq(int irq, void *dev_id)
 {
-	struct m800kbd *m800kbd_data = dev_id;
+	struct m800btn *m800btn_data = dev_id;
 	int key_pressed = !gpio_get_value(irq_to_gpio(irq));
 
-	input_report_key(m800kbd_data->input, KEY_POWER, key_pressed);
-	input_sync(m800kbd_data->input);
+	input_report_key(m800btn_data->input, KEY_POWER, key_pressed);
+	input_sync(m800btn_data->input);
 
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t m800kbd_cam_irq(int irq, void *dev_id)
+static irqreturn_t m800btn_cam_irq(int irq, void *dev_id)
 {
-	struct m800kbd *m800kbd_data = dev_id;
+	struct m800btn *m800btn_data = dev_id;
 
 	int key_pressed = !gpio_get_value(irq_to_gpio(irq));
-	input_report_key(m800kbd_data->input, KEY_CAMERA, key_pressed);
-	input_sync(m800kbd_data->input);
+	input_report_key(m800btn_data->input, KEY_CAMERA, key_pressed);
+	input_sync(m800btn_data->input);
 
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t m800kbd_rec_irq(int irq, void *dev_id)
+static irqreturn_t m800btn_rec_irq(int irq, void *dev_id)
 {
-	struct m800kbd *m800kbd_data = dev_id;
+	struct m800btn *m800btn_data = dev_id;
 
 	int key_pressed = !gpio_get_value(irq_to_gpio(irq));
-	input_report_key(m800kbd_data->input, KEY_RECORD, key_pressed);
-	input_sync(m800kbd_data->input);
+	input_report_key(m800btn_data->input, KEY_RECORD, key_pressed);
+	input_sync(m800btn_data->input);
 
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t m800kbd_slide_irq(int irq, void *dev_id)
+static irqreturn_t m800btn_slide_irq(int irq, void *dev_id)
 {
-	struct m800kbd *m800kbd_data = dev_id;
+	struct m800btn *m800btn_data = dev_id;
 
 	int key_pressed = gpio_get_value(irq_to_gpio(irq));
-	input_report_key(m800kbd_data->input, SW_LID, key_pressed);
-	input_sync(m800kbd_data->input);
+	input_report_key(m800btn_data->input, SW_LID, key_pressed);
+	input_sync(m800btn_data->input);
 
-	led_trigger_event(&m800kbd_data->slide_ledtrig, key_pressed);
+	led_trigger_event(&m800btn_data->slide_ledtrig, key_pressed);
 
 	return IRQ_HANDLED;
 }
 
 #if 0
-static void m800kbd_debounce_jack(struct work_struct *work)
+static void m800btn_debounce_jack(struct work_struct *work)
 {
-	struct m800kbd *kbd = container_of(work, struct m800kbd, work);
+	struct m800btn *kbd = container_of(work, struct m800btn, work);
 	unsigned long flags;
 	int loop = 0;
 
@@ -126,9 +126,9 @@ static void m800kbd_debounce_jack(struct work_struct *work)
 }
 
 
-static irqreturn_t m800kbd_headphone_irq(int irq, void *dev_id)
+static irqreturn_t m800btn_headphone_irq(int irq, void *dev_id)
 {
-	struct m800kbd *m800kbd_data = dev_id;
+	struct m800btn *m800btn_data = dev_id;
 
 	/*
 	 * this interrupt is prone to bouncing and userspace doesn't like
@@ -139,22 +139,22 @@ static irqreturn_t m800kbd_headphone_irq(int irq, void *dev_id)
 	 * for jack insert and reports it once
 	 */
 
-	m800kbd_data->hp_irq_count++;
+	m800btn_data->hp_irq_count++;
 	/*
 	 * the first interrupt we see for a while, we fire the work item
 	 * and record the interrupt count when we did that.  If more interrupts
 	 * come in the meanwhile, we can tell by the difference in that
 	 * stored count and hp_irq_count which increments every interrupt
 	 */
-	if (!m800kbd_data->work_in_progress) {
-		m800kbd_data->jack_irq = irq;
-		m800kbd_data->hp_irq_count_in_work =
-						m800kbd_data->hp_irq_count;
-		if (!schedule_work(&m800kbd_data->work))
+	if (!m800btn_data->work_in_progress) {
+		m800btn_data->jack_irq = irq;
+		m800btn_data->hp_irq_count_in_work =
+						m800btn_data->hp_irq_count;
+		if (!schedule_work(&m800btn_data->work))
 			printk(KERN_ERR
 				"Unable to schedule headphone debounce\n");
 		else
-			m800kbd_data->work_in_progress = 1;
+			m800btn_data->work_in_progress = 1;
 	}
 
 	return IRQ_HANDLED;
@@ -162,38 +162,38 @@ static irqreturn_t m800kbd_headphone_irq(int irq, void *dev_id)
 #endif
 
 #ifdef CONFIG_PM
-static int m800kbd_suspend(struct platform_device *dev, pm_message_t state)
+static int m800btn_suspend(struct platform_device *dev, pm_message_t state)
 {
-	struct m800kbd *m800kbd = platform_get_drvdata(dev);
+	struct m800btn *m800btn = platform_get_drvdata(dev);
 
-	m800kbd->suspended = 1;
+	m800btn->suspended = 1;
 
 	return 0;
 }
 
-static int m800kbd_resume(struct platform_device *dev)
+static int m800btn_resume(struct platform_device *dev)
 {
-	struct m800kbd *m800kbd = platform_get_drvdata(dev);
+	struct m800btn *m800btn = platform_get_drvdata(dev);
 
-	m800kbd->suspended = 0;
+	m800btn->suspended = 0;
 
 	return 0;
 }
 #else
-#define m800kbd_suspend	NULL
-#define m800kbd_resume	NULL
+#define m800btn_suspend	NULL
+#define m800btn_resume	NULL
 #endif
 
-static int m800kbd_probe(struct platform_device *pdev)
+static int m800btn_probe(struct platform_device *pdev)
 {
-	struct m800kbd *m800kbd;
+	struct m800btn *m800btn;
 	struct input_dev *input_dev;
 	int rc, irq_power, irq_cam, irq_rec, irq_slide;
 
-	m800kbd = kzalloc(sizeof(struct m800kbd), GFP_KERNEL);
+	m800btn = kzalloc(sizeof(struct m800btn), GFP_KERNEL);
 	input_dev = input_allocate_device();
-	if (!m800kbd || !input_dev) {
-		kfree(m800kbd);
+	if (!m800btn || !input_dev) {
+		kfree(m800btn);
 		input_free_device(input_dev);
 		return -ENOMEM;
 	}
@@ -217,14 +217,14 @@ static int m800kbd_probe(struct platform_device *pdev)
 	if (irq_slide < 0)
 		return -EINVAL;
 
-	platform_set_drvdata(pdev, m800kbd);
+	platform_set_drvdata(pdev, m800btn);
 
-	m800kbd->input = input_dev;
+	m800btn->input = input_dev;
 
-	//INIT_WORK(&m800kbd->work, m800kbd_debounce_jack);
+	//INIT_WORK(&m800btn->work, m800btn_debounce_jack);
 
 	input_dev->name = "E-TEN glofiish M800 Buttons";
-	input_dev->phys = "m800kbd/input0";
+	input_dev->phys = "m800btn/input0";
 	input_dev->id.bustype = BUS_HOST;
 	input_dev->id.vendor = 0x0001;
 	input_dev->id.product = 0x0001;
@@ -238,41 +238,41 @@ static int m800kbd_probe(struct platform_device *pdev)
 	set_bit(KEY_CAMERA, input_dev->keybit);
 	set_bit(KEY_RECORD, input_dev->keybit);
 
-	m800kbd->slide_ledtrig.name = "kbd-slide";
-	rc = led_trigger_register(&m800kbd->slide_ledtrig);
+	m800btn->slide_ledtrig.name = "kbd-slide";
+	rc = led_trigger_register(&m800btn->slide_ledtrig);
 	if (rc)
 		goto out_ledtrig;
 
-	rc = input_register_device(m800kbd->input);
+	rc = input_register_device(m800btn->input);
 	if (rc)
 		goto out_register;
 
-	if (request_irq(irq_power, m800kbd_power_irq, IRQF_DISABLED |
+	if (request_irq(irq_power, m800btn_power_irq, IRQF_DISABLED |
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-			"M800 Power button", m800kbd)) {
+			"M800 Power button", m800btn)) {
 		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_power);
 		goto out_power;
 	}
 
 	enable_irq_wake(irq_power);
 
-	if (request_irq(irq_cam, m800kbd_cam_irq, IRQF_DISABLED |
+	if (request_irq(irq_cam, m800btn_cam_irq, IRQF_DISABLED |
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-			"M800 Camera button", m800kbd)) {
+			"M800 Camera button", m800btn)) {
 		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_cam);
 		goto out_cam;
 	}
 
-	if (request_irq(irq_rec, m800kbd_rec_irq, IRQF_DISABLED |
+	if (request_irq(irq_rec, m800btn_rec_irq, IRQF_DISABLED |
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-			"M800 Record button", m800kbd)) {
+			"M800 Record button", m800btn)) {
 		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_rec);
 		goto out_record;
 	}
 
-	if (request_irq(irq_slide, m800kbd_slide_irq, IRQF_DISABLED |
+	if (request_irq(irq_slide, m800btn_slide_irq, IRQF_DISABLED |
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-			"M800 Slide", m800kbd)) {
+			"M800 Slide", m800btn)) {
 		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_slide);
 		goto out_slide;
 	}
@@ -281,62 +281,62 @@ static int m800kbd_probe(struct platform_device *pdev)
 	return 0;
 
 out_slide:
-	free_irq(irq_rec, m800kbd);
+	free_irq(irq_rec, m800btn);
 out_record:
-	free_irq(irq_cam, m800kbd);
+	free_irq(irq_cam, m800btn);
 out_cam:
-	free_irq(irq_power, m800kbd);
+	free_irq(irq_power, m800btn);
 out_power:
-	input_unregister_device(m800kbd->input);
+	input_unregister_device(m800btn->input);
 out_register:
-	input_free_device(m800kbd->input);
+	input_free_device(m800btn->input);
 out_ledtrig:
-	led_trigger_unregister(&m800kbd->slide_ledtrig);
+	led_trigger_unregister(&m800btn->slide_ledtrig);
 	platform_set_drvdata(pdev, NULL);
-	kfree(m800kbd);
+	kfree(m800btn);
 
 	return -ENODEV;
 }
 
-static int m800kbd_remove(struct platform_device *pdev)
+static int m800btn_remove(struct platform_device *pdev)
 {
-	struct m800kbd *m800kbd = platform_get_drvdata(pdev);
+	struct m800btn *m800btn = platform_get_drvdata(pdev);
 
-	free_irq(gpio_to_irq(pdev->resource[2].start), m800kbd);
-	free_irq(gpio_to_irq(pdev->resource[1].start), m800kbd);
-	free_irq(gpio_to_irq(pdev->resource[0].start), m800kbd);
+	free_irq(gpio_to_irq(pdev->resource[2].start), m800btn);
+	free_irq(gpio_to_irq(pdev->resource[1].start), m800btn);
+	free_irq(gpio_to_irq(pdev->resource[0].start), m800btn);
 
-	input_unregister_device(m800kbd->input);
+	input_unregister_device(m800btn->input);
 	/* input_unregister_device() free's the data */
-	led_trigger_unregister(&m800kbd->slide_ledtrig);
+	led_trigger_unregister(&m800btn->slide_ledtrig);
 	platform_set_drvdata(pdev, NULL);
-	kfree(m800kbd);
+	kfree(m800btn);
 
 	return 0;
 }
 
-static struct platform_driver m800kbd_driver = {
-	.probe		= m800kbd_probe,
-	.remove		= m800kbd_remove,
-	.suspend	= m800kbd_suspend,
-	.resume		= m800kbd_resume,
+static struct platform_driver m800btn_driver = {
+	.probe		= m800btn_probe,
+	.remove		= m800btn_remove,
+	.suspend	= m800btn_suspend,
+	.resume		= m800btn_resume,
 	.driver		= {
 		.name	= "m800-button",
 	},
 };
 
-static int __devinit m800kbd_init(void)
+static int __devinit m800btn_init(void)
 {
-	return platform_driver_register(&m800kbd_driver);
+	return platform_driver_register(&m800btn_driver);
 }
 
-static void __exit m800kbd_exit(void)
+static void __exit m800btn_exit(void)
 {
-	platform_driver_unregister(&m800kbd_driver);
+	platform_driver_unregister(&m800btn_driver);
 }
 
-module_init(m800kbd_init);
-module_exit(m800kbd_exit);
+module_init(m800btn_init);
+module_exit(m800btn_exit);
 
 MODULE_AUTHOR("Harald Welte <laforge@gnumonks.org>");
 MODULE_DESCRIPTION("E-TEN glofiish M800 GPIO buttons input driver");
