@@ -31,6 +31,7 @@
 #include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/leds.h>
+#include <linux/workqueue.h>
 
 #include <asm/mach-types.h>
 #include <asm/io.h>
@@ -70,8 +71,11 @@ struct gf_cpld {
 	struct {
 		int irq;
 		unsigned int gpio_scan_en;
+
 		struct input_dev *input_dev;
+		struct work_struct work;
 		u_int16_t keycode[NR_SCANCODES];
+
 		struct led_trigger ledt_bl;
 		struct led_trigger ledt_fn;
 		struct led_trigger ledt_caps;
@@ -282,23 +286,30 @@ static void parse_kbd_regs(struct gf_cpld *cpld, u_int16_t *regs)
 	input_sync(cpld->kbd.input_dev);
 }
 
-static irqreturn_t cpld_kbd_irq(int irq, void *_cpld)
+static void cpld_kbd_work(struct work_struct *work)
 {
-	struct gf_cpld *cpld = _cpld;
+	struct gf_cpld *cpld = container_of(work, struct gf_cpld, kbd.work);
 	u_int16_t regs[NUM_KBD_REGS];
 
-	/* enable keyboard scanning */
-	//s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 1);
-	
-	//udelay(200);
+	msleep(50);
 
 	/* read actual keyboard scan matrix registers */
 	read_kbd_regs(cpld, regs);
 
 	/* disable keyboard scanning */
-	//s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 0);
+	s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 0);
 
 	parse_kbd_regs(cpld, regs);
+}
+
+static irqreturn_t cpld_kbd_irq(int irq, void *_cpld)
+{
+	struct gf_cpld *cpld = _cpld;
+
+	/* enable keyboard scanning */
+	s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 1);
+
+	schedule_work(&cpld->kbd.work);
 
 	/* FIXME: we want to share with the I2C capsense driver */
 	return IRQ_HANDLED;
@@ -382,6 +393,7 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 			goto out_unmap;
 		}
 		cpld->kbd.gpio_scan_en = res->start;
+		INIT_WORK(&cpld->kbd.work, cpld_kbd_work);
 
 		indev = input_allocate_device();
 		if (!indev) {
@@ -437,7 +449,7 @@ static int __init gf_cpld_probe(struct platform_device *pdev)
 		}
 
 		/* FIXME: only enable scanning after interrupt */
-		s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 1);
+		//s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 1);
 	}
 
 	/* Initialize LED function */
@@ -482,7 +494,7 @@ static int gf_cpld_remove(struct platform_device *pdev)
 	finish_leds(cpld);
 
 	if (cpld->kbd.irq) {
-		s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 0);
+		//s3c2410_gpio_setpin(cpld->kbd.gpio_scan_en, 0);
 
 		free_irq(cpld->kbd.irq, cpld);
 
