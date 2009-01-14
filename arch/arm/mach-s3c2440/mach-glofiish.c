@@ -36,6 +36,7 @@
 #include <linux/serial_core.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/spi_bitbang.h>
+#include <linux/spi/libertas_spi.h>
 #include <linux/mmc/host.h>
 
 #include <linux/mtd/mtd.h>
@@ -401,8 +402,22 @@ const struct jbt6k74_platform_data jbt6k74_pdata = {
 	.resuming	= m800_jbt6k74_resuming,
 };
 
+//#if defined(CONFIG_LIBERTAS_SPI) || defined(CONFIG_LIBERTAS_SPI_MODULE)
+static struct libertas_spi_platform_data libertas_spi_pdata = {
+    .host_irq_num = M800_IRQ_WLAN_SPI, /* May also be M800_IRQ_WIFI_1 */
+    .gpio_cs = M800_GPIO_WLAN_nCS,
+    .use_dummy_writes = 1, /* May also be 0 */
+};
+
+/*static struct bfin5xx_spi_chip spi_libertas_chip_info = {
+    .enable_dma = 0,
+    .bits_per_word = 16,
+};*/
+//#endif
+
 static struct spi_board_info glofiish_spi_board_info[] = {
 	{
+		/* Not used */
 		.modalias	= "jbt6k74",
 		/* platform_data */
 		.platform_data	= &jbt6k74_pdata,
@@ -412,6 +427,18 @@ static struct spi_board_info glofiish_spi_board_info[] = {
 		.bus_num	= 2,
 		/* chip_select */
 	},
+
+//#if defined(CONFIG_LIBERTAS_SPI) || defined(CONFIG_LIBERTAS_SPI_MODULE)
+	{
+		.modalias = "libertas_spi",
+		.max_speed_hz = 10 * 1000 * 1000,
+		.chip_select = 1,
+		.mode = SPI_MODE_0,
+		.irq = M800_IRQ_WLAN_SPI, /* May also be M800_IRQ_WIFI_1 */
+		//.controller_data = &spi_libertas_chip_info,
+		.platform_data = &libertas_spi_pdata,
+	},
+//#endif
 };
 
 static void spi_gpio_cs(struct s3c2410_spigpio_info *spi, int csidx, int cs)
@@ -466,6 +493,11 @@ struct platform_device s3c_device_spi_lcm = {
 	.dev = {
 		.platform_data = &spi_gpio_cfg,
 	},
+};
+
+static struct s3c2410_spi_info spi_cfg_libertas = {
+	.pin_cs = M800_GPIO_WLAN_nCS,
+	.gpio_setup =  s3c24xx_spi_gpiocfg_bus0_gpe11_12_13,
 };
 
 static struct gta01bl_machinfo backlight_machinfo = {
@@ -715,6 +747,7 @@ static struct platform_device *glofiish_devices[] __initdata = {
 	&s3c_device_i2c0,
 	&s3c_device_iis,
 	&s3c_device_sdi,
+	&s3c_device_spi0,
 	&s3c_device_usbgadget,
 	&s3c_device_nand,
 	&s3c_device_ts,
@@ -739,6 +772,7 @@ static void __init glofiish_machine_init(void)
 	s3c_device_usb.dev.platform_data = &glofiish_usb_info;
 	s3c_device_nand.dev.platform_data = &glofiish_nand_info;
 	s3c_device_sdi.dev.platform_data = &glofiish_mmc_cfg;
+	s3c_device_spi0.dev.platform_data = &spi_cfg_libertas;
 
 	s3c24xx_fb_set_platdata(&glofiish_lcd_cfg);
 	s3c24xx_udc_set_platdata(&glofiish_udc_cfg);

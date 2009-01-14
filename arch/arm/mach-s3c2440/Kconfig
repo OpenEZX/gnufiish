@@ -106,6 +106,7 @@ config MACH_M800
 	select CPU_S3C2442
 	select MACH_GLOFIISH
 	select MACH_NEO1973
+	select S3C24XX_SPI_BUS0_GPE11_GPE12_GPE13
 	help
 	   Say Y here if you are using the E-TEN glofiish M800/X800.
 
