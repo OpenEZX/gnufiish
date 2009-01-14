@@ -598,8 +598,8 @@ static int lbs_process_bss(struct bss_descriptor *bss,
 
 		switch (elem->id) {
 		case MFIE_TYPE_SSID:
-			bss->ssid_len = min_t(int, 32, elem->len);
-			memcpy(bss->ssid, elem->data, bss->ssid_len);
+			bss->ssid_len = elem->len;
+			memcpy(bss->ssid, elem->data, elem->len);
 			lbs_deb_scan("got SSID IE: '%s', len %u\n",
 			             escape_essid(bss->ssid, bss->ssid_len),
 			             bss->ssid_len);
@@ -1124,7 +1124,7 @@ static int lbs_ret_80211_scan(struct lbs_private *priv, unsigned long dummy,
 		goto done;
 	}
 
-	bytesleft = le16_to_cpu(scanresp->bssdescriptsize);
+	bytesleft = get_unaligned_le16(&scanresp->bssdescriptsize);
 	lbs_deb_scan("SCAN_RESP: bssdescriptsize %d\n", bytesleft);
 
 	scanrespsize = le16_to_cpu(resp->size);

@@ -948,9 +948,8 @@ void lbs_resume(struct lbs_private *priv)
 EXPORT_SYMBOL_GPL(lbs_resume);
 
 /**
- *  @brief This function downloads firmware image, gets
- *  HW spec from firmware and set basic parameters to
- *  firmware.
+ *  @brief This function gets the HW spec from firmware and sets
+ *         basic parameters of the firmware.
  *
  *  @param priv    A pointer to struct lbs_private structure
  *  @return 	   0 or -1
