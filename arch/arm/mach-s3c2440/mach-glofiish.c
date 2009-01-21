@@ -79,9 +79,11 @@
 
 #include <linux/jbt6k74.h>
 
-#include <linux/ts_filter_group.h>
-#include <linux/ts_filter_mean.h>
-#include <linux/ts_filter_median.h>
+#include <../drivers/input/touchscreen/ts_filter_linear.h>
+#include <../drivers/input/touchscreen/ts_filter_mean.h>
+#include <../drivers/input/touchscreen/ts_filter_median.h>
+#include <../drivers/input/touchscreen/ts_filter_group.h>
+
 /*
  * this gets called every 1ms when we paniced.
  */
