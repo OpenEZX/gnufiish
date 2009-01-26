@@ -369,6 +369,7 @@ static struct ts_filter_mean_configuration m800_ts_mean_config = {
 static struct s3c2410_ts_mach_info glofiish_ts_cfg = {
 	.delay = 10000,
 	.presc = 50000000 / 1000000, /* 50 MHz PCLK / 1MHz */
+#if 0
 	.filter_sequence = {
 		[0] = &ts_filter_group_api,
 		[1] = &ts_filter_median_api,
@@ -379,6 +380,7 @@ static struct s3c2410_ts_mach_info glofiish_ts_cfg = {
 		[1] = &m800_ts_median_config,
 		[2] = &m800_ts_mean_config,
 	},
+#endif
 };
 
 
