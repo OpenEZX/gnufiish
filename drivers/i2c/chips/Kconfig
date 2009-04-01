@@ -233,7 +233,7 @@ config M800_CAPSENSE
 	  driver.
 
 	  This driver can also be built as a module.  If so, the module
-	  will be called gfish-modem.
+	  will be called m800-capsense.
 
 config LP5521
 	tristate "LP5521 LED driver chip"
