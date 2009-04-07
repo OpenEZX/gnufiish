@@ -377,16 +377,16 @@ static struct s3c2410_ts_mach_info glofiish_ts_cfg = {
 	.presc = 50000000 / 1000000, /* 50 MHz PCLK / 1MHz */
 	//.presc = 0xff, /* slow as we can go */
 	.filter_sequence = {
-		[0] = &ts_filter_group_api,
-		[1] = &ts_filter_median_api,
-		[2] = &ts_filter_mean_api,
-		[3] = &ts_filter_linear_api,
+//		[0] = &ts_filter_group_api,
+		[0] = &ts_filter_median_api,
+		[1] = &ts_filter_mean_api,
+		[2] = &ts_filter_linear_api,
 	},
 	.filter_config = {
-		[0] = &m800_ts_group_config,
-		[1] = &m800_ts_median_config,
-		[2] = &m800_ts_mean_config,
-		[3] = &m800_ts_linear_config,
+//		[0] = &m800_ts_group_config,
+		[0] = &m800_ts_median_config,
+		[1] = &m800_ts_mean_config,
+		[2] = &m800_ts_linear_config,
 	},
 };
 
