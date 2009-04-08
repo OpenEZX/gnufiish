@@ -561,9 +561,9 @@ static struct s3c2410_dma_client gm_dma_client = {
 };
 #endif /* USE_DMA */
 
-static int s3c24xx_spi_slave_init(struct gfish_modem *gf)
+static int s3c24xx_spi_slave_init(struct gfish_modem *gm)
 {
-	dev_dbg(&gf->pdev->dev, "slave_init()\n");
+	dev_dbg(&gm->pdev->dev, "slave_init()\n");
 
 	/* set upt the GPIO config */
 	s3c2410_gpio_cfgpin(S3C2410_GPD8, S3C2440_GPD8_nSPIMISO1);
@@ -571,8 +571,8 @@ static int s3c24xx_spi_slave_init(struct gfish_modem *gf)
 	s3c2410_gpio_cfgpin(S3C2410_GPD10, S3C2440_GPD10_nSPICLK1);
 	s3c2410_gpio_cfgpin(S3C2410_GPG3, S3C2440_GPG3_nSS1);
 
-	//writeb(0x00, gf->spi.regs + S3C2410_SPCON);
-	//writeb(S3C2410_SPPIN_KEEP, gf->spi.regs + S3C2410_SPPIN);
+	//writeb(0x00, gm->spi.regs + S3C2410_SPCON);
+	//writeb(S3C2410_SPPIN_KEEP, gm->spi.regs + S3C2410_SPPIN);
 
 	return 0;
 }
