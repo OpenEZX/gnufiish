@@ -777,7 +777,7 @@ static irqreturn_t gfish_modem_irq(int irq, void *priv)
 {
 	struct gfish_modem *gm = priv;
 	struct device *dev = &gm->pdev->dev;
-	int level = s3c2410_gpio_getpin(S3C2410_GPG8);
+	int level = s3c2410_gpio_getpin(S3C2410_GPG3);
 
 	dev_dbg(dev, "Modem nSS1 IRQ(%u) state(%s)\n",
 		level ? 1 : 0, state_name(gm->spi.state));
