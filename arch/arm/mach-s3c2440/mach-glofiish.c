@@ -599,15 +599,17 @@ static struct platform_device m800_pm_gps_dev = {
 };
 
 static struct resource m800_modem_resources[] = {
-	{
+	[0] = {
 		.flags	= IORESOURCE_IRQ,
 		.start	= M800_IRQ_GSM,
 		.end	= M800_IRQ_GSM,
-	}, {
+	},
+	[1] = {
 		.flags	= IORESOURCE_IRQ,
 		.start	= IRQ_SPI1,
 		.end	= IRQ_SPI1,
-	}, {
+	},
+	[2] = {
 		.flags	= IORESOURCE_MEM,
 		.start	= S3C2410_PA_SPI + 0x20,
 		.end	= S3C2410_PA_SPI + 0x34,
