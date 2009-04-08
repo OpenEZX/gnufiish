@@ -695,18 +695,6 @@ static void __init glofiish_map_io(void)
 	s3c24xx_init_uarts(m800_uartcfgs, ARRAY_SIZE(m800_uartcfgs));
 }
 
-static irqreturn_t gta02_modem_irq(int irq, void *param)
-{
-	printk(KERN_DEBUG "modem wakeup interrupt\n");
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t ar6000_wow_irq(int irq, void *param)
-{
-	printk(KERN_DEBUG "ar6000_wow interrupt\n");
-	return IRQ_HANDLED;
-}
-
 /*
  * hardware_ecc=1|0
  */
