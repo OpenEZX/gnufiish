@@ -93,7 +93,7 @@ static void ts_filter_median_del(int *p, int value, int count)
 }
 
 
-static void ts_filter_median_clear_internal(struct ts_filter *tsf)
+static void ts_filter_median_clear(struct ts_filter *tsf)
 {
 	struct ts_filter_median *tsfm = ts_filter_to_filter_median(tsf);
 
@@ -138,11 +138,7 @@ static struct ts_filter *ts_filter_median_create(
 		p += tsfm->config->extent + 1;
 	}
 
-	ts_filter_median_clear_internal(&tsfm->tsf);
-
-	printk(KERN_INFO"  Created Median ts filter len %d depth %d dec %d\n",
-	       tsfm->config->extent, count_coords,
-	       tsfm->config->decimation_threshold);
+	ts_filter_median_clear(&tsfm->tsf);
 
 	dev_info(&pdev->dev,
 		 "Created Median filter len:%d coords:%d dec_threshold:%d\n",
@@ -152,8 +148,7 @@ static struct ts_filter *ts_filter_median_create(
 	return &tsfm->tsf;
 }
 
-static void ts_filter_median_destroy(struct platform_device *pdev,
-				     struct ts_filter *tsf)
+static void ts_filter_median_destroy(struct ts_filter *tsf)
 {
 	struct ts_filter_median *tsfm = ts_filter_to_filter_median(tsf);
 

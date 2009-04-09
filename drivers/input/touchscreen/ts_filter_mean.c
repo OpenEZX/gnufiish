@@ -88,8 +88,7 @@ static struct ts_filter *ts_filter_mean_create(
 	return &priv->tsf;
 }
 
-static void ts_filter_mean_destroy(struct platform_device *pdev,
-				   struct ts_filter *tsf)
+static void ts_filter_mean_destroy(struct ts_filter *tsf)
 {
 	struct ts_filter_mean *priv = ts_filter_to_filter_mean(tsf);
 
