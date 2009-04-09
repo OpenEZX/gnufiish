@@ -26,12 +26,26 @@
 #include <linux/mmc/sdio_func.h>
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/sdio_ids.h>
-#include <asm/gpio.h>
-#include <mach/gta02-pm-wlan.h>
 
 #include "athdefs.h"
 #include "a_types.h"
 #include "hif.h"
+
+
+/* @@@ Hack - this wants cleaning up */
+
+#ifdef CONFIG_MACH_NEO1973_GTA02
+
+#include <mach/gta02-pm-wlan.h>
+
+#else /* CONFIG_MACH_NEO1973_GTA02 */
+
+#define	gta02_wlan_query_rfkill_lock()  1
+#define	gta02_wlan_set_rfkill_cb(cb, hif) ((void) cb)
+#define	gta02_wlan_query_rfkill_unlock()
+#define	gta02_wlan_clear_rfkill_cb()
+
+#endif /* !CONFIG_MACH_NEO1973_GTA02 */
 
 
 /*
@@ -139,10 +153,11 @@ static A_STATUS process_request(struct hif_request *req)
 
 	dev_dbg(&req->func->dev, "process_request(req %p)\n", req);
 	sdio_claim_host(req->func);
-	if (req->read)
+	if (req->read) {
 		ret = req->read(req->func, req->buf, req->addr, req->len);
-	else
+	} else {
 		ret = req->write(req->func, req->addr, req->buf, req->len);
+	}
 	sdio_release_host(req->func);
 	status = ret ? A_ERROR : A_OK;
 	if (req->completion)
@@ -496,7 +511,8 @@ static int ar6000_do_activate(struct hif_device *hif)
 	sdio_release_host(func);
 
 	hif->io_task = kthread_run(io, hif, "ar6000_io");
-	if (IS_ERR(hif->io_task)) {
+	ret = IS_ERR(hif->io_task);
+	if (ret) {
 		dev_err(dev, "kthread_run(ar6000_io): %d\n", ret);
 		goto out_func_ready;
 	}
@@ -568,8 +584,14 @@ static int ar6000_activate(struct hif_device *hif)
 	mutex_lock(&hif->activate_lock);
 	if (!hif->active) {
 		ret = ar6000_do_activate(hif);
+		if (ret) {
+			printk(KERN_ERR "%s: Failed to activate %d\n",
+				__func__, ret);
+			goto out;
+		}
 		hif->active = 1;
 	}
+out:
 	mutex_unlock(&hif->activate_lock);
 	return ret;
 }
@@ -653,12 +675,12 @@ static void sdio_ar6000_remove(struct sdio_func *func)
     SDIO_DEVICE(SDIO_VENDOR_ID_ATHEROS, SDIO_DEVICE_ID_ATHEROS_##id | (offset))
 
 static const struct sdio_device_id sdio_ar6000_ids[] = {
-	{ ATHEROS_SDIO_DEVICE(AR6000, 0)	},
-	{ ATHEROS_SDIO_DEVICE(AR6000, 0x1)	},
-	{ ATHEROS_SDIO_DEVICE(AR6000, 0x8)	},
-	{ ATHEROS_SDIO_DEVICE(AR6000, 0x9)	},
-	{ ATHEROS_SDIO_DEVICE(AR6000, 0xa)	},
-	{ ATHEROS_SDIO_DEVICE(AR6000, 0xb)	},
+	{ ATHEROS_SDIO_DEVICE(AR6002, 0)	},
+	{ ATHEROS_SDIO_DEVICE(AR6002, 0x1)	},
+	{ ATHEROS_SDIO_DEVICE(AR6001, 0x8)	},
+	{ ATHEROS_SDIO_DEVICE(AR6001, 0x9)	},
+	{ ATHEROS_SDIO_DEVICE(AR6001, 0xa)	},
+	{ ATHEROS_SDIO_DEVICE(AR6001, 0xb)	},
 	{ /* end: all zeroes */			},
 };
 

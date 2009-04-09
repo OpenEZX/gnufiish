@@ -5,11 +5,30 @@
 #
 # Licensed under GPLv3 or later
 #
+#
+# you need to run this from the top level source dir, but it creates all
+# object files into a subdir given in the first argument, eg
+#
+# ./build GTA02
+#
+# this radically speeds up swapping between build contexts.  Note the config
+# for each build lives in the subdir.
 
-# set -x
+PARALLEL=16
 
-export CROSS_COMPILE=/usr/local/openmoko/arm/bin/arm-angstrom-linux-gnueabi-
-make ARCH=arm silentoldconfig
+if [ -z "$1" ] ; then
+	echo "Specify the build subdir, eg, GTA02 which contains the .config"
+	echo "and will hold the object files"
+	exit 1
+fi
+
+mkdir -p $1
+
+if [ -z "$CROSS_COMPILE" ]; then
+    export CROSS_COMPILE=/usr/local/openmoko/arm/bin/arm-angstrom-linux-gnueabi-
+fi
+make O=$1 ARCH=arm silentoldconfig
+
 
 #
 # figure out what we are building
@@ -17,22 +36,27 @@ make ARCH=arm silentoldconfig
 
 PRODUCT=
 
-if [ ! -z "`grep CONFIG_MACH_NEO1973_GTA01=y .config`" ] ; then
+if [ ! -z "`grep CONFIG_MACH_NEO1973_GTA01=y $1/.config`" ] ; then
 	START=30008000
 	PRODUCT=GTA01
 fi
 
-if [ ! -z "`grep CONFIG_MACH_NEO1973_GTA02=y .config`" ] ; then
+if [ ! -z "`grep CONFIG_MACH_NEO1973_GTA02=y $1/.config`" ] ; then
 	START=30008000
 	PRODUCT=GTA02
 fi
 
-if [ ! -z "`grep CONFIG_MACH_OPENMOKO_GTA03=y .config`" ] ; then
+if [ ! -z "`grep CONFIG_MACH_OM_3D7K=y $1/.config`" ] ; then
         START=50008000
-        PRODUCT=GTA03
+        PRODUCT=OM_3D7K
 fi
 
-if [ ! -z "`grep CONFIG_MACH_M800=y .config`" ] ; then
+if [ ! -z "`grep CONFIG_MACH_SMDK6410=y $1/.config`" ] ; then
+        START=50008000
+        PRODUCT=SMDK6410
+fi
+
+if [ ! -z "`grep CONFIG_MACH_M800=y $1/.config`" ] ; then
 	START=30008000
 	PRODUCT=M800
 fi
@@ -43,6 +67,18 @@ if [ -z "$PRODUCT" ] ; then
 fi
 
 #
+# check that we are in a valid branch
+#
+
+if git branch | head -n1 | grep -q "* (no branch)"; then
+	cat <<EOF 1>&2
+There is no branch in the local copy of the repository right now!
+Hint: type git-branch, make sure you are in a valid branch and then try again
+EOF
+   exit 1
+fi;
+
+#
 # get the branch and head hash for the version we are building to
 # allow source tracability
 #
@@ -50,8 +86,8 @@ fi
 VERSION=
 if [ -d .git ] ; then
  HEAD=`git show --pretty=oneline | head -n1 | cut -d' ' -f1 | cut -b1-16`
- BRANCH=`git branch | grep ^\* | cut -d' ' -f2`
- VERSION=-$PRODUCT\_$BRANCH\_$HEAD
+ BRANCH=`git branch | grep ^\* | cut -d' ' -f2 | sed s/-hist//g`
+ VERSION=-$PRODUCT\_$BRANCH
 fi
 
 
@@ -61,29 +97,29 @@ echo $MKIMAGECMD
 # actually make it
 #
 
-if make -j5 ARCH=arm CONFIG_DEBUG_SECTION_MISMATCH=y EXTRAVERSION=$VERSION; then
+if make -j$PARALLEL O=$1 ARCH=arm CONFIG_DEBUG_SECTION_MISMATCH=y EXTRAVERSION=$VERSION; then
 
 	#
 	# if the build is happy, postprocess it by strip and with U-Boot header wrapper
 	# you can get mkimage from U-Boot or Qi build
 	#
 
-	${CROSS_COMPILE}objcopy -O binary -R .note -R .comment -S arch/arm/boot/compressed/vmlinux linux.bin
-	mkimage -A arm -O linux -T kernel -C none -a $START -e $START -n "OM $PRODUCT $BRANCH""_$HEAD" -d linux.bin uImage-$PRODUCT.bin
+	${CROSS_COMPILE}objcopy -O binary -R .note -R .comment -S $1/arch/arm/boot/compressed/vmlinux $1/linux.bin
+	mkimage -A arm -O linux -T kernel -C none -a $START -e $START -n "OM $PRODUCT $BRANCH""_$HEAD" -d $1/linux.bin $1/uImage-$PRODUCT.bin
 
 	# we can see if it is an "moredrivers" build by looking for USB Eth gadget
 	# if it is then keep a stamped copy of last build
 
-	if [ ! -z "`grep CONFIG_USB_USBNET=y .config`" ] ; then
-		rm -f uImage-moredrivers*-$PRODUCT.bin modules-*$PRODUCT.tar.gz
-		cp uImage-$PRODUCT.bin uImage-moredrivers$VERSION.bin
-		rm -rf staging
-		mkdir -p staging
-		if [ ! -z "$1" ] ; then
-			make modules_install INSTALL_MOD_PATH=staging
-			cd staging
-			tar czf ../modules$VERSION.tar.gz .
-			cd ..
+	if [ ! -z "`grep CONFIG_USB_USBNET=y $1/.config`" ] ; then
+		rm -f $1/uImage-moredrivers-$PRODUCT*.bin $1/modules-$PRODUCT*.tar.gz
+		cp $1/uImage-$PRODUCT.bin $1/uImage-moredrivers$VERSION-$HEAD.bin
+		rm -rf $1/staging
+		mkdir -p $1/staging
+		if [ ! -z "$2" ] ; then
+			make O=$1 ARCH=arm modules_install INSTALL_MOD_PATH=staging
+			cd $1/staging
+			tar czf ../modules$VERSION-$HEAD.tar.gz .
+			cd ../..
 		fi
 	fi
 	exit 0

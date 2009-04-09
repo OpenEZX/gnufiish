@@ -26,6 +26,7 @@
  * if_sdio_card_to_host() to pad the data.
  */
 
+#include <linux/kernel.h>
 #include <linux/moduleparam.h>
 #include <linux/firmware.h>
 #include <linux/netdevice.h>
@@ -48,6 +49,7 @@ module_param_named(fw_name, lbs_fw_name, charp, 0644);
 
 static const struct sdio_device_id if_sdio_ids[] = {
 	{ SDIO_DEVICE(SDIO_VENDOR_ID_MARVELL, SDIO_DEVICE_ID_MARVELL_LIBERTAS) },
+	{ SDIO_DEVICE(SDIO_VENDOR_ID_MARVELL, SDIO_DEVICE_ID_MARVELL_88W8688) },
 	{ /* end: all zeroes */						},
 };
 
@@ -72,7 +74,12 @@ static struct if_sdio_model if_sdio_models[] = {
 		.helper = "sd8686_helper.bin",
 		.firmware = "sd8686.bin",
 	},
-};
+	{
+		/* 8688 */
+		.model = 0x10,
+		.helper = "sd8688_helper.bin",
+		.firmware = "sd8688.bin",
+	},};
 
 struct if_sdio_packet {
 	struct if_sdio_packet	*next;
@@ -581,7 +588,7 @@ static int if_sdio_prog_real(struct if_sdio_card *card)
 				chunk_size, (chunk_size + 31) / 32 * 32);
 */
 			ret = sdio_writesb(card->func, card->ioport,
-				chunk_buffer, (chunk_size + 31) / 32 * 32);
+				chunk_buffer, roundup(chunk_size, 32));
 			if (ret)
 				goto release;
 

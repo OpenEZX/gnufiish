@@ -17,6 +17,7 @@
 #include <linux/gpio.h>
 #include <linux/irq.h>
 #include <linux/io.h>
+#include <linux/gpio.h>
 
 #include <asm/hardware/vic.h>
 
@@ -45,7 +46,7 @@ static void s3c_irq_eint_unmask(unsigned int irq)
 	u32 mask;
 
 	mask = __raw_readl(S3C64XX_EINT0MASK);
-	mask |= eint_irq_to_bit(irq);
+	mask &= ~eint_irq_to_bit(irq);
 	__raw_writel(mask, S3C64XX_EINT0MASK);
 }
 
@@ -124,7 +125,6 @@ static int s3c_irq_eint_set_type(unsigned int irq, unsigned int type)
 		pin = S3C64XX_GPM(offs - 23);
 
 	s3c_gpio_cfgpin(pin, S3C_GPIO_SFN(2));
-
 	return 0;
 }
 

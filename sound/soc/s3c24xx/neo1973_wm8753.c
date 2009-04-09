@@ -29,11 +29,11 @@
 #include <mach/regs-clock.h>
 #include <mach/regs-gpio.h>
 #include <mach/hardware.h>
-#include <mach/audio.h>
+#include <plat/audio.h>
 #include <linux/io.h>
 #include <mach/spi-gpio.h>
-#include <asm/mach-types.h>
-#include <asm/plat-s3c24xx/regs-iis.h>
+
+#include <plat/regs-iis.h>
 
 #include "../codecs/wm8753.h"
 #include "lm4857.h"
@@ -59,7 +59,7 @@
 #define NEO_CAPTURE_HEADSET		7
 #define NEO_CAPTURE_BLUETOOTH		8
 
-static struct snd_soc_machine neo1973;
+static struct snd_soc_card neo1973;
 static struct i2c_client *i2c;
 
 static int neo1973_hifi_hw_params(struct snd_pcm_substream *substream,
@@ -548,7 +548,6 @@ static int neo1973_wm8753_init(struct snd_soc_codec *codec)
 static struct snd_soc_dai bt_dai = {
 	.name = "Bluetooth",
 	.id = 0,
-	.type = SND_SOC_DAI_PCM,
 	.playback = {
 		.channels_min = 1,
 		.channels_max = 1,
@@ -579,22 +578,16 @@ static struct snd_soc_dai_link neo1973_dai[] = {
 },
 };
 
-static struct snd_soc_machine neo1973 = {
+static struct snd_soc_card neo1973 = {
 	.name = "neo1973",
+	.platform = &s3c24xx_soc_platform,
 	.dai_link = neo1973_dai,
 	.num_links = ARRAY_SIZE(neo1973_dai),
 };
 
-static struct wm8753_setup_data soc_codec_data_wm8753_gta01 = {
-	.i2c_bus = 0,
-	.i2c_address = 0x1a,
-};
-
 static struct snd_soc_device neo1973_snd_devdata = {
-	.machine = &neo1973,
-	.platform = &s3c24xx_soc_platform,
+	.card = &neo1973,
 	.codec_dev = &soc_codec_dev_wm8753,
-	.codec_data = &soc_codec_data_wm8753_gta01
 };
 
 static int lm4857_i2c_probe(struct i2c_client *client,
@@ -653,13 +646,13 @@ static void lm4857_shutdown(struct i2c_client *dev)
 }
 
 static const struct i2c_device_id lm4857_i2c_id[] = {
-	{ "neo1973_lm4857", 0 },
+	{ "lm4857", 0 },
 	{ }
 };
 
 static struct i2c_driver lm4857_i2c_driver = {
 	.driver = {
-		.name = "LM4857 I2C Amp",
+		.name = "lm4857",
 		.owner = THIS_MODULE,
 	},
 	.suspend =        lm4857_suspend,
@@ -683,6 +676,11 @@ static int __init neo1973_init(void)
 			"Only GTA01 hardware supported by ASoC driver\n");
 		return -ENODEV;
 	}
+
+	/* register bluetooth DAI here */
+	ret = snd_soc_register_dai(&bt_dai);
+	if (ret)
+		return ret;
 
 	neo1973_snd_device = platform_device_alloc("soc-audio", -1);
 	if (!neo1973_snd_device)
@@ -709,6 +707,7 @@ static void __exit neo1973_exit(void)
 {
 	DBG("Entered %s\n", __func__);
 
+	snd_soc_unregister_dai(&bt_dai);
 	i2c_del_driver(&lm4857_i2c_driver);
 	platform_device_unregister(neo1973_snd_device);
 }

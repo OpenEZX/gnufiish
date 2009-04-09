@@ -37,7 +37,7 @@ struct s3c64xx_spigpio {
 
 static inline struct s3c64xx_spigpio *spidev_to_sg(struct spi_device *spi)
 {
-	return spi->controller_data;
+	return dev_get_drvdata(&spi->master->dev);
 }
 
 static inline void setsck(struct spi_device *dev, int on)
@@ -90,7 +90,7 @@ static void s3c64xx_spigpio_chipselect(struct spi_device *dev, int value)
 {
 	struct s3c64xx_spigpio *sg = spidev_to_sg(dev);
 
-	if (sg->info && sg->info->chip_select)
+	if (sg && sg->info && sg->info->chip_select)
 		(sg->info->chip_select)(sg->info, dev->chip_select, value);
 }
 
@@ -101,7 +101,6 @@ static int s3c64xx_spigpio_probe(struct platform_device *dev)
 	struct s3c64xx_spigpio 	*spi;
 
 	int ret;
-	int i;
 
 	master = spi_alloc_master(&dev->dev, sizeof(struct s3c64xx_spigpio));
 	if (master == NULL) {
@@ -132,24 +131,10 @@ static int s3c64xx_spigpio_probe(struct platform_device *dev)
 	gpio_direction_output(info->pin_clk, 0);
 	s3c_gpio_cfgpin(info->pin_clk, S3C_GPIO_OUTPUT);
 
+	dev_set_drvdata(&master->dev, spi);
 	ret = spi_bitbang_start(&spi->bitbang);
 	if (ret)
 		goto err_no_bitbang;
-
-	/* register the chips to go with the board */
-	for (i = 0; i < spi->info->board_size; i++) {
-		struct spi_device *spidev;
-
-		dev_info(&dev->dev, "registering %p: %s\n",
-			 &spi->info->board_info[i],
-			 spi->info->board_info[i].modalias);
-
-		spi->info->board_info[i].controller_data = spi;
-		spidev = spi_new_device(master, spi->info->board_info + i);
-		if (spidev)
-			spidev->max_speed_hz =
-					  spi->info->board_info[i].max_speed_hz;
-	}
 
 	return 0;
 
