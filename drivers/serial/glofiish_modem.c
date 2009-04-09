@@ -839,6 +839,9 @@ static int __init gm_probe(struct platform_device *pdev)
 		goto out_free;
 	}
 
+	/* Configure the GSM_REQ pin as output */
+	s3c2410_gpio_cfgpin(M800_GPIO_GSM_REQ, S3C2410_GPIO_OUTPUT);
+
 	/* de-assert the GSM SPI request */
 	s3c2410_gpio_setpin(gm->gpio_req, 0);
 
