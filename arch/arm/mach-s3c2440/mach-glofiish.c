@@ -283,6 +283,16 @@ static struct i2c_board_info glofiish_i2c_devs[] __initdata = {
 		/* Battery (unknown chip) */
 		I2C_BOARD_INFO("gf_batt", 0x2f),
 	},
+#if 0
+	{
+		/* Front camera */
+		I2C_BOARD_INFO("FIXME", 0x30),
+	},
+	{
+		/* Back camera */
+		I2C_BOARD_INFO("FIXME", 0x3c),
+	},
+#endif
 	/* Don't put Audio Codec here, ASoC handles it */
 };
 
