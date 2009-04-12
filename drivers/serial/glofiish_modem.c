@@ -69,9 +69,14 @@ NOTE: nSS1 seems to be interconnected to EINT16, in order to assure the AP gets 
 #include <asm/dma.h>
 
 #include <plat/regs-spi.h>
+#include <plat/regs-dma.h>
+
 #include <mach/dma.h>
+#include <mach/spi.h>
+#include <mach/spi-gpio.h>
 #include <mach/regs-gpio.h>
 #include <mach/regs-clock.h>
+#include <mach/hardware.h>
 #include <mach/glofiish.h>
 
 enum spi_state {
@@ -509,14 +514,12 @@ static void dma_setup(struct gfish_modem *gm, enum s3c2410_dmasrc source)
 	dev_dbg(dev, "dma_setup(): devaddr = 0x%08lx\n", devaddr);
 
 	/* '3' means: fixed address, APB */
-	s3c2410_dma_devconfig(gm->spi.dmach, source, 3, devaddr);
+	s3c2410_dma_devconfig(gm->spi.dmach, source, devaddr);
 
 	if (!setup_ok) {
 		dev_dbg(dev, "dma_setup(): first-time setup\n");
 		/* '1' means byte-wise transfers */
-		s3c2410_dma_config(gm->spi.dmach, 1,
-			(S3C2410_DCON_HANDSHAKE | S3C2410_DCON_HWTRIG |
-			 S3C2410_DCON_CH3_SPI));
+		s3c2410_dma_config(gm->spi.dmach, 1);
 		s3c2410_dma_set_buffdone_fn(gm->spi.dmach,
 					    dma_done_callback);
 		s3c2410_dma_setflags(gm->spi.dmach, S3C2410_DMAF_AUTOSTART);

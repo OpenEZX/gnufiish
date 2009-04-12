@@ -572,8 +572,6 @@ struct snd_soc_dai ak4641_dai[] = {
 	},
 	.ops = {
 		.hw_params = ak4641_i2s_hw_params,
-	},
-	.dai_ops = {
 		.set_fmt = ak4641_i2s_set_dai_fmt,
 		.digital_mute = ak4641_mute,
 		.set_sysclk = ak4641_set_dai_sysclk,
@@ -598,8 +596,6 @@ struct snd_soc_dai ak4641_dai[] = {
 	},
 	.ops = {
 		.hw_params = ak4641_pcm_hw_params,
-	},
-	.dai_ops = {
 		.set_fmt = ak4641_pcm_set_dai_fmt,
 		.digital_mute = ak4641_mute,
 		.set_sysclk = ak4641_set_dai_sysclk,
@@ -662,7 +658,7 @@ static int ak4641_init(struct snd_soc_device *socdev)
 
 	ak4641_add_controls(codec);
 	ak4641_add_widgets(codec);
-	ret = snd_soc_register_card(socdev);
+	ret = snd_soc_init_card(socdev);
 	if (ret < 0) {
 		printk(KERN_ERR "ak4641: failed to register card\n");
 		goto card_err;
