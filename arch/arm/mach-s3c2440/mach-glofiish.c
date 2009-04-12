@@ -582,6 +582,14 @@ static struct resource m800_button_resources[] = {
 		.start = M800_GPIO_SLIDE,
 		.end   = M800_GPIO_SLIDE,
 	},
+	[4] = {
+		.start = M800_GPIO_nKEY_RESET,
+		.end   = M800_GPIO_nKEY_RESET,
+	},
+	[5] = {
+		.start = M800_GPIO_HEADJACK,
+		.end   = M800_GPIO_HEADJACK,
+	},
 };
 
 static struct platform_device m800_button_dev = {
