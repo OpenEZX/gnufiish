@@ -287,6 +287,16 @@ static struct i2c_board_info glofiish_i2c_devs[] __initdata = {
 		/* Battery (unknown chip) */
 		I2C_BOARD_INFO("gf_batt", 0x2f),
 	},
+#if 0
+	{
+		/* Front camera */
+		I2C_BOARD_INFO("FIXME", 0x30),
+	},
+	{
+		/* Back camera */
+		I2C_BOARD_INFO("FIXME", 0x3c),
+	},
+#endif
 	/* Don't put Audio Codec here, ASoC handles it */
 };
 
@@ -586,6 +596,14 @@ static struct resource m800_button_resources[] = {
 		.start = M800_GPIO_SLIDE,
 		.end   = M800_GPIO_SLIDE,
 	},
+	[4] = {
+		.start = M800_GPIO_nKEY_RESET,
+		.end   = M800_GPIO_nKEY_RESET,
+	},
+	[5] = {
+		.start = M800_GPIO_HEADJACK,
+		.end   = M800_GPIO_HEADJACK,
+	},
 };
 
 static struct platform_device m800_button_dev = {
@@ -603,15 +621,17 @@ static struct platform_device m800_pm_gps_dev = {
 };
 
 static struct resource m800_modem_resources[] = {
-	{
+	[0] = {
 		.flags	= IORESOURCE_IRQ,
 		.start	= M800_IRQ_GSM,
 		.end	= M800_IRQ_GSM,
-	}, {
+	},
+	[1] = {
 		.flags	= IORESOURCE_IRQ,
 		.start	= IRQ_SPI1,
 		.end	= IRQ_SPI1,
-	}, {
+	},
+	[2] = {
 		.flags	= IORESOURCE_MEM,
 		.start	= S3C2410_PA_SPI + 0x20,
 		.end	= S3C2410_PA_SPI + 0x34,
@@ -697,18 +717,6 @@ static void __init glofiish_map_io(void)
 	s3c24xx_init_io(m800_iodesc, ARRAY_SIZE(m800_iodesc));
 	s3c24xx_init_clocks(16934400);
 	s3c24xx_init_uarts(m800_uartcfgs, ARRAY_SIZE(m800_uartcfgs));
-}
-
-static irqreturn_t gta02_modem_irq(int irq, void *param)
-{
-	printk(KERN_DEBUG "modem wakeup interrupt\n");
-	return IRQ_HANDLED;
-}
-
-static irqreturn_t ar6000_wow_irq(int irq, void *param)
-{
-	printk(KERN_DEBUG "ar6000_wow interrupt\n");
-	return IRQ_HANDLED;
 }
 
 /*

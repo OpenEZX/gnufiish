@@ -194,7 +194,7 @@ static void gfish_modem_stop_tx(struct uart_port *port)
 	struct gfish_modem *gm = port_to_modem(port);
 
 	dev_dbg(&gm->pdev->dev, "stop_tx\n");
-	//s3c2410_gpio_setpin(gm->gpio_req, 0);
+	//set_gsm_spi_req(gm, 0);
 }
 
 static void gfish_modem_start_tx(struct uart_port *port)
@@ -204,7 +204,7 @@ static void gfish_modem_start_tx(struct uart_port *port)
 	dev_dbg(&gm->pdev->dev, "start_tx\n");
 	/* Assert GPA16 and thus trigger the CMD SPI RX stage
 	   and further operations */
-	//s3c2410_gpio_setpin(gm->gpio_req, 1);
+	//set_gsm_spi_req(gm, 1);
 }
 
 static void gfish_modem_stop_rx(struct uart_port *port)
@@ -564,9 +564,9 @@ static struct s3c2410_dma_client gm_dma_client = {
 };
 #endif /* USE_DMA */
 
-static int s3c24xx_spi_slave_init(struct gfish_modem *gf)
+static int s3c24xx_spi_slave_init(struct gfish_modem *gm)
 {
-	dev_dbg(&gf->pdev->dev, "slave_init()\n");
+	dev_dbg(&gm->pdev->dev, "slave_init()\n");
 
 	/* set upt the GPIO config */
 	s3c2410_gpio_cfgpin(S3C2410_GPD8, S3C2440_GPD8_nSPIMISO1);
@@ -574,8 +574,8 @@ static int s3c24xx_spi_slave_init(struct gfish_modem *gf)
 	s3c2410_gpio_cfgpin(S3C2410_GPD10, S3C2440_GPD10_nSPICLK1);
 	s3c2410_gpio_cfgpin(S3C2410_GPG3, S3C2440_GPG3_nSS1);
 
-	//writeb(0x00, gf->spi.regs + S3C2410_SPCON);
-	//writeb(S3C2410_SPPIN_KEEP, gf->spi.regs + S3C2410_SPPIN);
+	//writeb(0x00, gm->spi.regs + S3C2410_SPCON);
+	//writeb(S3C2410_SPPIN_KEEP, gm->spi.regs + S3C2410_SPPIN);
 
 	return 0;
 }
@@ -780,7 +780,7 @@ static irqreturn_t gfish_modem_irq(int irq, void *priv)
 {
 	struct gfish_modem *gm = priv;
 	struct device *dev = &gm->pdev->dev;
-	int level = s3c2410_gpio_getpin(S3C2410_GPG8);
+	int level = s3c2410_gpio_getpin(S3C2410_GPG3);
 
 	dev_dbg(dev, "Modem nSS1 IRQ(%u) state(%s)\n",
 		level ? 1 : 0, state_name(gm->spi.state));
@@ -842,8 +842,11 @@ static int __init gm_probe(struct platform_device *pdev)
 		goto out_free;
 	}
 
+	/* Configure the GSM_REQ pin as output */
+	s3c2410_gpio_cfgpin(M800_GPIO_GSM_REQ, S3C2410_GPIO_OUTPUT);
+
 	/* de-assert the GSM SPI request */
-	s3c2410_gpio_setpin(gm->gpio_req, 0);
+	set_gsm_spi_req(gm, 0);
 
 	gm->spi.ioarea = request_mem_region(res->start,
 					    (res->end - res->start)+1,
@@ -954,7 +957,7 @@ static int gm_remove(struct platform_device *pdev)
 	struct gfish_modem *gm = platform_get_drvdata(pdev);
 
 	/* de-assert the GSM SPI request */
-	s3c2410_gpio_setpin(gm->gpio_req, 0);
+	set_gsm_spi_req(gm, 0);
 
 #ifdef USE_DMA
 	s3c2410_dma_ctrl(gm->spi.dmach, S3C2410_DMAOP_FLUSH);

@@ -83,6 +83,32 @@ static irqreturn_t m800btn_slide_irq(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t m800btn_reset_irq(int irq, void *dev_id)
+{
+	struct m800btn *m800btn_data = dev_id;
+	int key_pressed = !gpio_get_value(irq_to_gpio(irq));
+
+	input_report_key(m800btn_data->input, KEY_RESET, key_pressed);
+	input_sync(m800btn_data->input);
+
+	return IRQ_HANDLED;
+}
+
+/* We don't handle debouncing for the headphone so far. If we need to do this in
+ * software, see below.
+ */
+static irqreturn_t m800btn_headjack_irq(int irq, void *dev_id)
+{
+#if 0
+	struct m800btn *m800btn_data = dev_id;
+	int key_pressed = !gpio_get_value(irq_to_gpio(irq));
+
+	input_report_key(m800btn_data->input, SW_HEADPHONE_INSERT, key_pressed);
+	input_sync(m800btn_data->input);
+#endif
+	return IRQ_HANDLED;
+}
+
 #if 0
 static void m800btn_debounce_jack(struct work_struct *work)
 {
@@ -188,7 +214,7 @@ static int m800btn_probe(struct platform_device *pdev)
 {
 	struct m800btn *m800btn;
 	struct input_dev *input_dev;
-	int rc, irq_power, irq_cam, irq_rec, irq_slide;
+	int rc, irq_power, irq_cam, irq_rec, irq_slide, irq_reset, irq_headjack;
 
 	m800btn = kzalloc(sizeof(struct m800btn), GFP_KERNEL);
 	input_dev = input_allocate_device();
@@ -215,6 +241,14 @@ static int m800btn_probe(struct platform_device *pdev)
 
 	irq_slide = gpio_to_irq(pdev->resource[3].start);
 	if (irq_slide < 0)
+		return -EINVAL;
+
+	irq_reset = gpio_to_irq(pdev->resource[4].start);
+	if (irq_reset < 0)
+		return -EINVAL;
+
+	irq_headjack = gpio_to_irq(pdev->resource[5].start);
+	if (irq_headjack < 0)
 		return -EINVAL;
 
 	platform_set_drvdata(pdev, m800btn);
@@ -278,8 +312,26 @@ static int m800btn_probe(struct platform_device *pdev)
 	}
 	enable_irq_wake(irq_slide);
 
+	if (request_irq(irq_reset, m800btn_reset_irq, IRQF_DISABLED |
+			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+			"M800 Reset", m800btn)) {
+		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_reset);
+		goto out_reset;
+	}
+
+	if (request_irq(irq_headjack, m800btn_headjack_irq, IRQF_DISABLED |
+			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+			"M800 Headjack", m800btn)) {
+		dev_err(&pdev->dev, "Can't get IRQ %u\n", irq_headjack);
+		goto out_headjack;
+	}
+
 	return 0;
 
+out_headjack:
+	free_irq(irq_headjack, m800btn);
+out_reset:
+	free_irq(irq_reset, m800btn);
 out_slide:
 	free_irq(irq_rec, m800btn);
 out_record:
@@ -302,6 +354,9 @@ static int m800btn_remove(struct platform_device *pdev)
 {
 	struct m800btn *m800btn = platform_get_drvdata(pdev);
 
+	free_irq(gpio_to_irq(pdev->resource[5].start), m800btn);
+	free_irq(gpio_to_irq(pdev->resource[4].start), m800btn);
+	free_irq(gpio_to_irq(pdev->resource[3].start), m800btn);
 	free_irq(gpio_to_irq(pdev->resource[2].start), m800btn);
 	free_irq(gpio_to_irq(pdev->resource[1].start), m800btn);
 	free_irq(gpio_to_irq(pdev->resource[0].start), m800btn);
