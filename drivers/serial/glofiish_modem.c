@@ -74,6 +74,9 @@ NOTE: nSS1 seems to be interconnected to EINT16, in order to assure the AP gets 
 #include <mach/regs-clock.h>
 #include <mach/glofiish.h>
 
+#include <linux/kthread.h>
+#include <linux/delay.h>
+
 enum spi_state {
 	STATE_NONE,
 	STATE_IDLE,		/* idle */
@@ -568,10 +571,12 @@ static int s3c24xx_spi_slave_init(struct gfish_modem *gm)
 	/* set upt the GPIO config */
 	s3c2410_gpio_cfgpin(S3C2410_GPD8, S3C2440_GPD8_nSPIMISO1);
 	s3c2410_gpio_cfgpin(S3C2410_GPD9, S3C2440_GPD9_nSPIMOSI1);
-	s3c2410_gpio_cfgpin(S3C2410_GPD10, S3C2440_GPD10_nSPICLK1);
+	//s3c2410_gpio_cfgpin(S3C2410_GPD10, S3C2440_GPD10_nSPICLK1);
+	s3c2410_gpio_cfgpin(S3C2410_GPD10, S3C2410_GPIO_INPUT);
 	s3c2410_gpio_cfgpin(S3C2410_GPG3, S3C2440_GPG3_nSS1);
 
-	//writeb(0x00, gm->spi.regs + S3C2410_SPCON);
+	/* Set SPI slave mode S3C2410_SPCON_MSTR */
+	/* FIXME writeb(S3C2410_SPCON_MSTR, gm->spi.regs + S3C2410_SPCON); */
 	//writeb(S3C2410_SPPIN_KEEP, gm->spi.regs + S3C2410_SPPIN);
 
 	return 0;
@@ -779,6 +784,8 @@ static irqreturn_t gfish_modem_irq(int irq, void *priv)
 	struct device *dev = &gm->pdev->dev;
 	int level = s3c2410_gpio_getpin(S3C2410_GPG3);
 
+	printk("***************YAY********************\n");
+
 	dev_dbg(dev, "Modem nSS1 IRQ(%u) state(%s)\n",
 		level ? 1 : 0, state_name(gm->spi.state));
 
@@ -811,6 +818,23 @@ static ssize_t set_txatz(struct device *dev, struct device_attribute *attr, cons
 
 static DEVICE_ATTR(tx_atz, S_IWUSR | S_IRUGO,
 		   NULL, set_txatz);
+
+static int spi_clk_poller(void *d)
+{
+	struct device *dev = d;
+	dev_dbg(dev, "Poller thread started");
+	int level = 0;
+
+	for(;;) {
+		//level++;
+		level = s3c2410_gpio_getpin(S3C2410_GPD10);
+		if (level)
+			printk("***** Got an edge on SPICLK1: %i\n", level);
+		msleep(1);
+	}
+
+	return 0;
+}
 
 static int __init gm_probe(struct platform_device *pdev)
 {
@@ -915,6 +939,9 @@ static int __init gm_probe(struct platform_device *pdev)
 		goto out_file;
 	}
 #endif
+
+	if (IS_ERR(kthread_run(spi_clk_poller, gm, "spi-slave-clk-poller")))
+		dev_err(&pdev->dev, "failed to setup spi slave poller thread");
 
 	s3c24xx_spi_slave_init(gm);
 
