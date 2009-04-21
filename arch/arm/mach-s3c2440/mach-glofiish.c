@@ -276,7 +276,7 @@ static struct i2c_board_info glofiish_i2c_devs[] __initdata = {
 	},
 	{
 		/* FM Tuner */
-		I2C_BOARD_INFO("si4700", 0x10),
+		I2C_BOARD_INFO("si470x-i2c", 0x10),
 		.irq = M800_IRQ_FMRADIO,
 	},
 	{
