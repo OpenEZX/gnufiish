@@ -167,7 +167,7 @@ static int si470x_i2c_remove(struct i2c_client *client)
     return 0;
 }
 
-struct int si470x_i2c_suspend(struct i2client *client)
+static int si470x_i2c_suspend(struct i2client *client)
 {
     struct si470x_device *radio = i2c_get_clientdata(client);
     return si470xlib_suspend(radio);
