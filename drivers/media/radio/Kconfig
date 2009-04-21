@@ -351,16 +351,6 @@ config USB_DSBR
 	  To compile this driver as a module, choose M here: the
 	  module will be called dsbr100.
 
-config USB_SI470X
-	tristate "Silicon Labs Si470x FM Radio Receiver support"
-	depends on USB && VIDEO_V4L2
-	---help---
-	  Say Y here if you want to connect this type of radio to your
-	  computer's USB port.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called radio-si470x.
-
 config USB_MR800
 	tristate "AverMedia MR 800 USB FM radio support"
 	depends on USB && VIDEO_V4L2
@@ -372,5 +362,7 @@ config USB_MR800
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called radio-mr800.
+
+source "drivers/media/radio/si470x/Kconfig"
 
 endif # RADIO_ADAPTERS
