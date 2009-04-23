@@ -1,6 +1,6 @@
 /* E-TEN glofiish M800 CapSense driver
  *
- * (C) 2008 by Harald Welte <laforge@gnufiish.org>,
+ * (C) 2008-2009 by Harald Welte <laforge@gnufiish.org>,
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -18,6 +18,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
  * MA 02111-1307 USA
  *
+ * TODO:
+ *	* use a mutex to prevent race conditions
+ *	* use proper keymap that can be changed by userspace
+ *	* introduce sysfs api for capsense initial valuse
+ *	* support for X800, DX900 and other devices
  */
 
 #define DEBUG
@@ -32,6 +37,7 @@
 #include <linux/input.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
+#include <linux/leds.h>
 
 #define KEYSTATE_SIZE	12
 struct m800_caps_data {
@@ -41,6 +47,7 @@ struct m800_caps_data {
 	struct work_struct work;
 	struct mutex working_lock;
 	struct input_dev *input_dev;
+	struct led_classdev led_cdev;
 	unsigned char last_keystate[KEYSTATE_SIZE];
 	unsigned char keystate_buf[KEYSTATE_SIZE];
 };
@@ -59,14 +66,25 @@ I2C_CLIENT_INSMOD_1(m800_caps);
 #define GFISH_KS5_AP_SOFT1	0x40
 #define GFISH_KS5_AP_OK		0x80
 
-static int set_led(struct m800_caps_data *gc, int on)
+static int send_ee(struct m800_caps_data *gc)
 {
-	if (on)
+	u_int8_t ee = 0xee;
+
+	return i2c_master_send(gc->client, &ee, 1);
+}
+
+static void gf_caps_led_set(struct led_classdev *led_cdev,
+			    enum led_brightness value)
+{
+	struct device *parent = led_cdev->dev->parent;
+	struct m800_caps_data *gc = dev_get_drvdata(parent);
+
+	if (value)
 		gc->keystate_buf[1] = 0x01;
 	else
-		gc->keystate_buf[0] = 0x01;
+		gc->keystate_buf[1] = 0x00;
 
-	return i2c_master_send(gc->client, gc->keystate_buf, 5);
+	i2c_master_send(gc->client, gc->keystate_buf, 5);
 }
 
 static int get_start_thresh(struct m800_caps_data *gc)
@@ -76,8 +94,46 @@ static int get_start_thresh(struct m800_caps_data *gc)
 	u_int8_t ks[7];
 
 	ret = i2c_master_send(gc->client, &aa, 1);
-	ret = i2c_master_recv(gc->client, &ks, sizeof(ks));
+	msleep(300);
+	ret = i2c_master_recv(gc->client, ks, sizeof(ks));
 	/* FIXME: what to do with it? */
+}
+
+static u_int8_t get_key_thresh(struct m800_caps_data *gc, u_int8_t key)
+{
+	int ret;
+	u_int8_t ks[7];
+
+	if (key > 7)
+		return -EINVAL;
+
+	key |= 0x60;
+	ret = i2c_master_send(gc->client, &key, 1);
+	msleep(300);
+	ret = i2c_master_recv(gc->client, ks, sizeof(ks));
+
+	/* FIXME: only after reading all of them */
+	send_ee(gc);
+
+	return ks[0];
+}
+
+static int set_key_thresh(struct m800_caps_data *gc, u_int8_t key,
+			  u_int8_t val)
+{
+	int ret;
+
+	if (key > 7)
+		return -EINVAL;
+
+	key |= 0x70;
+	ret = i2c_master_send(gc->client, &key, 1);
+
+	msleep(200);
+
+	ret = i2c_master_send(gc->client, &val, 1);
+
+	return send_ee(gc);
 }
 
 static int set_power(struct m800_caps_data *gc)
@@ -100,6 +156,7 @@ static int set_power(struct m800_caps_data *gc)
 	return ret;
 }
 
+/* keystate 5 reflects the capsense buttons */
 static void process_ks5(struct m800_caps_data *gc, u_int8_t ks5)
 {
 	int pressed = 1;
@@ -127,6 +184,12 @@ static void process_ks5(struct m800_caps_data *gc, u_int8_t ks5)
 
 	if (ks5 & GFISH_KS5_AP_OK)
 		input_report_key(gc->input_dev, KEY_OK, pressed);
+}
+
+/* keystate 6 reflects the joystick */
+static void process_ks6(struct m800_caps_data *gc, u_int8_t ks6)
+{
+	/* FIXME: find out which value reflects which key */
 }
 
 static void m800_caps_work(struct work_struct *work)
@@ -159,6 +222,7 @@ static void m800_caps_work(struct work_struct *work)
 		ks[7], ks[8], ks[9], ks[10], ks[11]);
 
 	process_ks5(gc, ks[5]);
+	process_ks6(gc, ks[6]);
 
 	memcpy(gc->last_keystate, ks, KEYSTATE_SIZE);
 
@@ -208,16 +272,18 @@ static int m800_caps_probe(struct i2c_client *client,
 		goto exit_free;
 	}
 
-	gc->input_dev->name = "glofiish CLPD";
-	gc->input_dev->phys = "FIXME";
+	gc->input_dev->name = "glofiish capsense";
+	gc->input_dev->phys = "I2C";
 	gc->input_dev->id.bustype = BUS_I2C;
 
 	gc->input_dev->evbit[0] = BIT(EV_KEY);
 	//set_bit(KEY_FIXME, gc->input_dev->keybit);
 
 	err = input_register_device(gc->input_dev);
-	if (err)
+	if (err) {
+		dev_err(&client->dev, "unable to register input device\n");
 		goto exit_alloc_inp;
+	}
 
 	i2c_set_clientdata(client, gc);
 
@@ -238,12 +304,25 @@ static int m800_caps_probe(struct i2c_client *client,
 	//set_power(gc);
 
 	err = request_irq(gc->irq, m800_caps_irq, 0, "gf-caps", gc);
-	if (err < 0)
+	if (err < 0) {
+		dev_err(&client->dev, "unable to register irq: %d\n", err);
 		goto exit_input;
+	}
+
+	gc->led_cdev.name = "glofiish:white:buttons";
+	gc->led_cdev.brightness_set = gf_caps_led_set;
+	err = led_classdev_register(&client->dev, &gc->led_cdev);
+	if (err < 0) {
+		dev_err(&client->dev, "unable to register led: %d\n", err);
+		goto exit_irq;
+	}
 
 	return 0;
 
+exit_irq:
+	free_irq(gc->irq, gc);
 exit_input:
+	i2c_set_clientdata(client, NULL);
 	input_unregister_device(gc->input_dev);
 exit_alloc_inp:
 	input_free_device(gc->input_dev);
@@ -258,7 +337,9 @@ static int __devexit m800_caps_remove(struct i2c_client *client)
 {
 	struct m800_caps_data *gc = i2c_get_clientdata(client);
 
+	led_classdev_unregister(&gc->led_cdev);
 	free_irq(gc->irq, gc);
+	i2c_set_clientdata(client, NULL);
 	input_unregister_device(gc->input_dev);
 	kfree(gc);
 

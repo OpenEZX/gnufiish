@@ -1,0 +1,38 @@
+
+menuconfig SI470X
+    tristate "Silicon Labs Si470x FM Radio Receiver support"
+    depends on VIDEO_V4L2
+    ---help---
+    BlaBla
+
+if SI470X
+
+config USB_SI470X
+	tristate "Silicon Labs Si470x FM Radio Receiver support for USB"
+	depends on USB
+    select LIB_SI470X
+	---help---
+	  Say Y here if you want to connect this type of radio to your
+	  computer's USB port.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called si470x-usb.
+
+config I2C_SI470X
+	tristate "Silicon Labs Si470x FM Radio Receiver support for I2C"
+	depends on I2C
+    select LIB_SI470X
+	---help---
+	  Say Y here if you want to connect this type of radio to your
+	  computer's i2c port.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called si470x-i2c.
+
+
+config LIB_SI470X
+    tristate "Silicon Labs Si470X FM Radio Receiver Chip support"
+    ---help---
+    FIXME
+
+endif
