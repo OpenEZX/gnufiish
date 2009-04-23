@@ -84,7 +84,7 @@
 #include <../drivers/input/touchscreen/ts_filter_linear.h>
 #include <../drivers/input/touchscreen/ts_filter_mean.h>
 #include <../drivers/input/touchscreen/ts_filter_median.h>
-#include <../drivers/input/touchscreen/ts_filter_group.h>
+/*#include <../drivers/input/touchscreen/ts_filter_group.h>*/
 #endif
 
 
@@ -362,12 +362,15 @@ static struct s3c2410_udc_mach_info glofiish_udc_cfg = {
 /* touchscreen configuration */
 
 #ifdef CONFIG_TOUCHSCREEN_FILTER
+
+#if 0
 const static struct ts_filter_group_configuration m800_ts_group = {
 	.length = 12,
 	.close_enough = 10,
 	.threshold = 6,		/* At least half of the points in a group. */
 	.attempts = 10,
 };
+#endif
 
 const static struct ts_filter_median_configuration m800_ts_median = {
 	.extent = 20,
@@ -390,7 +393,7 @@ const static struct ts_filter_linear_configuration m800_ts_linear = {
 const struct ts_filter_chain_configuration filter_configuration[] =
 {
 #ifdef CONFIG_TOUCHSCREEN_FILTER
-	{&ts_filter_group_api,		&m800_ts_group.config},
+/*	{&ts_filter_group_api,		&m800_ts_group.config}, */
 	{&ts_filter_median_api,		&m800_ts_median.config},
 	{&ts_filter_mean_api,		&m800_ts_mean.config},
 	{&ts_filter_linear_api,		&m800_ts_linear.config},
