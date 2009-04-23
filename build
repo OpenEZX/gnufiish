@@ -14,7 +14,7 @@
 # this radically speeds up swapping between build contexts.  Note the config
 # for each build lives in the subdir.
 
-PARALLEL=16
+PARALLEL=2
 
 if [ -z "$1" ] ; then
 	echo "Specify the build subdir, eg, GTA02 which contains the .config"
