@@ -24,11 +24,12 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 #include <linux/input.h>
+#include <linux/device.h>
 
 #include <linux/pcap7200.h>
 #include <../drivers/input/touchscreen/ts_filter.h>
 
-#include <mach/om-gta03.h>
+#include <mach/om-3d7k.h>
 
 #define PCAP7200_OP_MODE_REG	0x07
 #define RPT_PKT_SIZE 	5
@@ -42,7 +43,7 @@
 struct pcap7200_data{
 	struct i2c_client *client;
 	struct input_dev *dev;
-	struct ts_filter *tsf[MAX_TS_FILTER_CHAIN];
+	struct ts_filter **tsf;
 	struct mutex lock;
 	int irq;
 	struct work_struct work;
@@ -114,6 +115,8 @@ static int __set_op_mode(struct pcap7200_data *pcap, u_int8_t val)
 
 	mutex_lock(&pcap->lock);
 
+	val = val & 0x03;
+
 	/* this chip has an issue.
 	 * you need to give wakeup call for 3 times if it's
 	 * in sleep mode.
@@ -161,8 +164,9 @@ pcap7200_probe(struct i2c_client *client, const struct i2c_device_id *ids)
 	struct pcap7200_data *pcap;
 	struct input_dev *input_dev;
 	int err;
+	struct pcap7200_platform_data *pdata = client->dev.platform_data;
 
-	/* allocat pcap7200 data */
+	/* allocate pcap7200 data */
 	pcap = kzalloc(sizeof(struct pcap7200_data), GFP_KERNEL);
 	if (!pcap)
 		return -ENOMEM;
@@ -171,6 +175,15 @@ pcap7200_probe(struct i2c_client *client, const struct i2c_device_id *ids)
 	pcap->client = client;
 
 	mutex_init(&pcap->lock);
+
+	/* reset */
+	if (pdata->reset) {
+		pdata->reset();
+		dev_dbg(&client->dev, "hard reset\n");
+	}
+
+	/* operating mode */
+	__set_op_mode(pcap, pdata->mode);
 
 	/* initialize input device */
 	input_dev = input_allocate_device();

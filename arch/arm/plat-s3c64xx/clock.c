@@ -16,7 +16,6 @@
 #include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/ioport.h>
-#include <linux/delay.h>
 #include <linux/io.h>
 
 #include <mach/hardware.h>
@@ -27,6 +26,12 @@
 #include <plat/cpu.h>
 #include <plat/devs.h>
 #include <plat/clock.h>
+
+struct clk clk_h2 = {
+	.name		= "hclk2",
+	.id		= -1,
+	.rate		= 0,
+};
 
 struct clk clk_27m = {
 	.name		= "clk_27m",
@@ -84,7 +89,7 @@ static int s3c64xx_pclk_ctrl(struct clk *clk, int enable)
 	return s3c64xx_gate(S3C_PCLK_GATE, clk, enable);
 }
 
-static int s3c64xx_hclk_ctrl(struct clk *clk, int enable)
+int s3c64xx_hclk_ctrl(struct clk *clk, int enable)
 {
 	return s3c64xx_gate(S3C_HCLK_GATE, clk, enable);
 }
@@ -153,6 +158,30 @@ static struct clk init_clocks_disable[] = {
 		.parent		= &clk_48m,
 		.enable		= s3c64xx_sclk_ctrl,
 		.ctrlbit	= S3C_CLKCON_SCLK_MMC2_48,
+	}, {
+		.name		= "dma0",
+		.id		= -1,
+		.parent		= &clk_h,
+		.enable		= s3c64xx_hclk_ctrl,
+		.ctrlbit	= S3C_CLKCON_HCLK_DMA0,
+	}, {
+		.name		= "dma1",
+		.id		= -1,
+		.parent		= &clk_h,
+		.enable		= s3c64xx_hclk_ctrl,
+		.ctrlbit	= S3C_CLKCON_HCLK_DMA1,
+	}, {
+		.name		= "dma2",
+		.id		= -1,
+		.parent		= &clk_h,
+		.enable		= s3c64xx_hclk_ctrl,
+		.ctrlbit	= S3C_CLKCON_HCLK_SDMA0,
+	}, {
+		.name		= "dma3",
+		.id		= -1,
+		.parent		= &clk_h,
+		.enable		= s3c64xx_hclk_ctrl,
+		.ctrlbit	= S3C_CLKCON_HCLK_SDMA1,
 	},
 };
 
@@ -247,6 +276,7 @@ static struct clk *clks[] __initdata = {
 	&clk_epll,
 	&clk_27m,
 	&clk_48m,
+	&clk_h2,
 };
 
 void s3c64xx_register_clocks(void)

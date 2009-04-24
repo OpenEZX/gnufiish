@@ -21,6 +21,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/spinlock.h>
+#include <linux/workqueue.h>
 
 #include <asm/dma.h>
 #include <asm/dma-mapping.h>
@@ -331,16 +332,40 @@ static int __glamo_mci_set_card_clock(struct glamo_mci_host *host, int freq,
 	return real_rate;
 }
 
-static void glamo_mci_irq(unsigned int irq, struct irq_desc *desc)
+
+static void glamo_mci_irq_worker(struct work_struct *work)
 {
-	struct glamo_mci_host *host = (struct glamo_mci_host *)
-				      desc->handler_data;
+	struct glamo_mci_host *host =
+			    container_of(work, struct glamo_mci_host, irq_work);
+	struct mmc_command *cmd = host->mrq->cmd;
+
+	if (host->pio_active == XFER_READ)
+		do_pio_read(host);
+
+	host->mrq->data->bytes_xfered = host->pio_count;
+	dev_dbg(&host->pdev->dev, "count=%d\n", host->pio_count);
+
+	/* issue STOP if we have been given one to use */
+	if (host->mrq->stop) {
+		host->cmd_is_stop = 1;
+		glamo_mci_send_request(host->mmc);
+		host->cmd_is_stop = 0;
+	}
+
+	if (!sd_idleclk && !host->force_slow_during_powerup)
+		/* clock off */
+		__glamo_mci_fix_card_div(host, -1);
+
+	host->complete_what = COMPLETION_NONE;
+	host->mrq = NULL;
+	mmc_request_done(host->mmc, cmd->mrq);
+}
+
+static void glamo_mci_irq_host(struct glamo_mci_host *host)
+{
 	u16 status;
 	struct mmc_command *cmd;
 	unsigned long iflags;
-
-	if (!host)
-		return;
 
 	if (host->suspending) { /* bad news, dangerous time */
 		dev_err(&host->pdev->dev, "****glamo_mci_irq before resumed\n");
@@ -356,10 +381,15 @@ static void glamo_mci_irq(unsigned int irq, struct irq_desc *desc)
 	spin_lock_irqsave(&host->complete_lock, iflags);
 
 	status = readw(host->base + GLAMO_REG_MMC_RB_STAT1);
+	dev_dbg(&host->pdev->dev, "status = 0x%04x\n", status);
 
 	/* ack this interrupt source */
 	writew(GLAMO_IRQ_MMC,
 	       glamo_mci_def_pdata.pglamo->base + GLAMO_REG_IRQ_CLEAR);
+
+	/* we ignore a data timeout report if we are also told the data came */
+	if (status & GLAMO_STAT1_MMC_RB_DRDY)
+		status &= ~GLAMO_STAT1_MMC_DTOUT;
 
 	if (status & (GLAMO_STAT1_MMC_RTOUT |
 		      GLAMO_STAT1_MMC_DTOUT))
@@ -368,37 +398,40 @@ static void glamo_mci_irq(unsigned int irq, struct irq_desc *desc)
 		      GLAMO_STAT1_MMC_BRERR))
 		cmd->error = -EILSEQ;
 	if (cmd->error) {
-		dev_err(&host->pdev->dev, "Error after cmd: 0x%x\n", status);
+		dev_info(&host->pdev->dev, "Error after cmd: 0x%x\n", status);
 		goto done;
 	}
 
-	/* disable the initial slow start after first bulk transfer */
+	/*
+	 * disable the initial slow start after first bulk transfer
+	 */
 	if (host->force_slow_during_powerup)
 		host->force_slow_during_powerup--;
 
-	if (host->pio_active == XFER_READ)
-		do_pio_read(host);
+	/*
+	 * we perform the memcpy out of Glamo memory outside of IRQ context
+	 * so we don't block other interrupts
+	 */
+	schedule_work(&host->irq_work);
 
-	host->mrq->data->bytes_xfered = host->pio_count;
-	dev_dbg(&host->pdev->dev, "status = 0x%04x count=%d\n",
-		 status, host->pio_count);
-
-	/* issue STOP if we have been given one to use */
-	if (host->mrq->stop) {
-		host->cmd_is_stop = 1;
-		glamo_mci_send_request(host->mmc);
-		host->cmd_is_stop = 0;
-	}
-
-	if (!sd_idleclk && !host->force_slow_during_powerup)
-		/* clock off */
-		__glamo_mci_fix_card_div(host, -1);
+	goto leave;
 
 done:
 	host->complete_what = COMPLETION_NONE;
 	host->mrq = NULL;
 	mmc_request_done(host->mmc, cmd->mrq);
+leave:
 	spin_unlock_irqrestore(&host->complete_lock, iflags);
+}
+
+static void glamo_mci_irq(unsigned int irq, struct irq_desc *desc)
+{
+	struct glamo_mci_host *host = (struct glamo_mci_host *)
+				      desc->handler_data;
+
+	if (host)
+		glamo_mci_irq_host(host);
+
 }
 
 static int glamo_mci_send_command(struct glamo_mci_host *host,
@@ -579,8 +612,8 @@ static void glamo_mci_send_request(struct mmc_host *mmc)
 	u16 * reg_resp = (u16 *)(host->base + GLAMO_REG_MMC_CMD_RSP1);
 	u16 status;
 	int n;
-	int timeout = 10000000;
-	int insanity_timeout = 10000000;
+	int timeout = 1000000;
+	int insanity_timeout = 1000000;
 
 	if (host->suspending) {
 		dev_err(&host->pdev->dev, "IGNORING glamo_mci_send_request while "
@@ -626,6 +659,11 @@ static void glamo_mci_send_request(struct mmc_host *mmc)
 
 	if (glamo_mci_send_command(host, cmd))
 		goto bail;
+
+	/* we are deselecting card?  because it isn't going to ack then... */
+	if ((cmd->opcode == 7) && (cmd->arg == 0))
+		goto done;
+
 	/*
 	 * we must spin until response is ready or timed out
 	 * -- we don't get interrupts unless there is a bulk rx
@@ -653,7 +691,7 @@ static void glamo_mci_send_request(struct mmc_host *mmc)
 		goto bail;
 
 	if (cmd->error) {
-		dev_err(&host->pdev->dev, "Error after cmd: 0x%x\n", status);
+		dev_info(&host->pdev->dev, "Error after cmd: 0x%x\n", status);
 		goto done;
 	}
 	/*
@@ -709,8 +747,7 @@ static void glamo_mci_send_request(struct mmc_host *mmc)
 		/* yay we are an interrupt controller! -- call the ISR
 		 * it will stop clock to card
 		 */
-		glamo_mci_irq(IRQ_GLAMO(GLAMO_IRQIDX_MMC),
-			      irq_desc + IRQ_GLAMO(GLAMO_IRQIDX_MMC));
+		glamo_mci_irq_host(host);
 	}
 	return;
 
@@ -741,7 +778,7 @@ static void glamo_mci_reset(struct glamo_mci_host *host)
 								 "suspended\n");
 		return;
 	}
-	dev_err(&host->pdev->dev, "******* glamo_mci_reset\n");
+	dev_dbg(&host->pdev->dev, "******* glamo_mci_reset\n");
 	/* reset MMC controller */
 	writew(GLAMO_CLOCK_MMC_RESET | GLAMO_CLOCK_MMC_DG_TCLK |
 		   GLAMO_CLOCK_MMC_EN_TCLK | GLAMO_CLOCK_MMC_DG_M9CLK |
@@ -755,13 +792,24 @@ static void glamo_mci_reset(struct glamo_mci_host *host)
 		   glamo_mci_def_pdata.pglamo->base + GLAMO_REG_CLOCK_MMC);
 }
 #endif
+static inline int glamo_mci_get_mv(int vdd)
+{
+	int mv = 1650;
+
+	if (vdd > 7)
+		mv += 350 + 100 * (vdd - 8);
+
+	return mv;
+}
 
 static void glamo_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct glamo_mci_host *host = mmc_priv(mmc);
+	struct regulator *regulator;
 	int n = 0;
 	int div;
 	int powering = 0;
+	int mv;
 
 	if (host->suspending) {
 		dev_err(&host->pdev->dev, "IGNORING glamo_mci_set_ios while "
@@ -769,10 +817,18 @@ static void glamo_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		return;
 	}
 
+	regulator = host->regulator;
+
 	/* Set power */
 	switch(ios->power_mode) {
-	case MMC_POWER_ON:
 	case MMC_POWER_UP:
+		if (host->pdata->glamo_can_set_mci_power()) {
+			mv = glamo_mci_get_mv(ios->vdd);
+			regulator_set_voltage(regulator, mv * 1000, mv * 1000);
+			regulator_enable(regulator);
+		}
+		break;
+	case MMC_POWER_ON:
 		/*
 		 * we should use very slow clock until first bulk
 		 * transfer completes OK
@@ -780,8 +836,11 @@ static void glamo_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		host->force_slow_during_powerup = 1;
 
 		if (host->vdd_current != ios->vdd) {
-			host->pdata->glamo_set_mci_power(ios->power_mode,
-							 ios->vdd);
+			if (host->pdata->glamo_can_set_mci_power()) {
+				mv = glamo_mci_get_mv(ios->vdd);
+				regulator_set_voltage(regulator, mv * 1000, mv * 1000);
+				printk(KERN_INFO "SD power -> %dmV\n", mv);
+			}
 			host->vdd_current = ios->vdd;
 		}
 		if (host->power_mode_current == MMC_POWER_OFF) {
@@ -800,7 +859,7 @@ static void glamo_mci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 
 		glamo_engine_disable(glamo_mci_def_pdata.pglamo,
 				     GLAMO_ENGINE_MMC);
-		host->pdata->glamo_set_mci_power(MMC_POWER_OFF, 0);
+		regulator_disable(regulator);
 		host->vdd_current = -1;
 		break;
 	}
@@ -879,6 +938,7 @@ static int glamo_mci_probe(struct platform_device *pdev)
 	host->pio_active = XFER_NONE;
 
 	spin_lock_init(&host->complete_lock);
+	INIT_WORK(&host->irq_work, glamo_mci_irq_worker);
 
 	host->mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!host->mem) {
@@ -903,6 +963,12 @@ static int glamo_mci_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to ioremap() io memory region.\n");
 		ret = -EINVAL;
 		goto probe_free_mem_region;
+	}
+
+	host->regulator = regulator_get(&pdev->dev, "SD_3V3");
+	if (!host->regulator) {
+		dev_err(&pdev->dev, "Cannot proceed without regulator.\n");
+		return -ENODEV;
 	}
 
 	/* set the handler for our bit of the shared chip irq register */
@@ -992,6 +1058,7 @@ static int glamo_mci_remove(struct platform_device *pdev)
 {
 	struct mmc_host 	*mmc  = platform_get_drvdata(pdev);
 	struct glamo_mci_host 	*host = mmc_priv(mmc);
+	struct regulator *regulator;
 
 	mmc_remove_host(mmc);
 	/* stop using our handler, revert it to default */
@@ -1000,6 +1067,10 @@ static int glamo_mci_remove(struct platform_device *pdev)
 	iounmap(host->base_data);
 	release_mem_region(host->mem->start, RESSIZE(host->mem));
 	release_mem_region(host->mem_data->start, RESSIZE(host->mem_data));
+
+	regulator = host->regulator;
+	regulator_put(regulator);
+	
 	mmc_free_host(mmc);
 
 	glamo_engine_disable(glamo_mci_def_pdata.pglamo, GLAMO_ENGINE_MMC);
@@ -1014,6 +1085,8 @@ static int glamo_mci_suspend(struct platform_device *dev, pm_message_t state)
 	struct mmc_host *mmc = platform_get_drvdata(dev);
 	struct glamo_mci_host 	*host = mmc_priv(mmc);
 	int ret;
+
+	cancel_work_sync(&host->irq_work);
 
 	/*
 	 * possible workaround for SD corruption during suspend - resume

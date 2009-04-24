@@ -21,3 +21,6 @@ obj-$(CONFIG_S3C6410_SETUP_SDHCI)	+= setup-sdhci.o
 # machine support
 
 obj-$(CONFIG_MACH_SMDK6410)	+= mach-smdk6410.o
+obj-$(CONFIG_MACH_OM_3D7K)	+= mach-om-3d7k.o \
+				   om-3d7k-features.o
+

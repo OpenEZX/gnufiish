@@ -27,12 +27,12 @@
 #include <mach/regs-clock.h>
 #include <mach/regs-gpio.h>
 #include <mach/hardware.h>
-#include <mach/audio.h>
+#include <plat/audio.h>
 #include <mach/glofiish.h>
 #include <linux/io.h>
 #include <mach/spi-gpio.h>
 #include <asm/mach-types.h>
-#include <asm/plat-s3c24xx/regs-iis.h>
+#include <plat/regs-iis.h>
 
 #include "../codecs/ak4641.h"
 #include "s3c24xx-pcm.h"
@@ -465,7 +465,6 @@ static int gfish_ak4641_init(struct snd_soc_codec *codec)
 static struct snd_soc_dai bt_dai = {
 	.name = "Bluetooth",
 	.id = 0,
-	.type = SND_SOC_DAI_PCM,
 	.playback = {
 		.channels_min = 1,
 		.channels_max = 1,
@@ -496,8 +495,9 @@ static struct snd_soc_dai_link gfish_dai[] = {
 },
 };
 
-static struct snd_soc_machine gfish_m800 = {
+static struct snd_soc_card gfish_m800 = {
 	.name = "glofiish M800",
+    .platform = &s3c24xx_soc_platform,
 	.dai_link = gfish_dai,
 	.num_links = ARRAY_SIZE(gfish_dai),
 };
@@ -508,8 +508,7 @@ static struct ak4641_setup_data soc_codec_data_ak4641_gfish = {
 };
 
 static struct snd_soc_device gfish_snd_devdata = {
-	.machine = &gfish_m800,
-	.platform = &s3c24xx_soc_platform,
+	.card = &gfish_m800,
 	.codec_dev = &soc_codec_dev_ak4641,
 	.codec_data = &soc_codec_data_ak4641_gfish,
 };

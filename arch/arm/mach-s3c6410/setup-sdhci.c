@@ -48,7 +48,8 @@ void s3c6410_setup_sdhci0_cfg_gpio(struct platform_device *dev, int width)
 		s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
 	}
 
-	s3c_gpio_setpull(S3C64XX_GPG(6), S3C_GPIO_PULL_UP);
+	/* FIXME this needs defining in machine as to if we even have CD */
+	s3c_gpio_setpull(S3C64XX_GPG(6), S3C_GPIO_PULL_DOWN);
 	s3c_gpio_cfgpin(S3C64XX_GPG(6), S3C_GPIO_SFN(2));
 }
 
@@ -79,7 +80,7 @@ void s3c6410_setup_sdhci0_cfg_card(struct platform_device *dev,
 	else
 		ctrl3 = (S3C_SDHCI_CTRL3_FCSEL1 | S3C_SDHCI_CTRL3_FCSEL0);
 
-	printk(KERN_INFO "%s: CTRL 2=%08x, 3=%08x\n", __func__, ctrl2, ctrl3);
+	printk(KERN_INFO "%s: %p CTRL 2=%08x, 3=%08x\n", __func__, r, ctrl2, ctrl3);
 	writel(ctrl2, r + S3C_SDHCI_CONTROL2);
 	writel(ctrl3, r + S3C_SDHCI_CONTROL3);
 }
@@ -94,9 +95,9 @@ void s3c6410_setup_sdhci1_cfg_gpio(struct platform_device *dev, int width)
 	/* Set all the necessary GPG pins to special-function 0 */
 	for (gpio = S3C64XX_GPH(0); gpio < end; gpio++) {
 		s3c_gpio_cfgpin(gpio, S3C_GPIO_SFN(2));
-		s3c_gpio_setpull(gpio, S3C_GPIO_PULL_NONE);
+		s3c_gpio_setpull(gpio, S3C_GPIO_PULL_UP);
 	}
 
-	s3c_gpio_setpull(S3C64XX_GPG(6), S3C_GPIO_PULL_UP);
-	s3c_gpio_cfgpin(S3C64XX_GPG(6), S3C_GPIO_SFN(3));
+//	s3c_gpio_setpull(S3C64XX_GPG(6), S3C_GPIO_PULL_UP);
+//	s3c_gpio_cfgpin(S3C64XX_GPG(6), S3C_GPIO_SFN(3));
 }

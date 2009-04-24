@@ -62,7 +62,6 @@
 #include <mach/ts.h>
 #include <mach/spi.h>
 #include <mach/spi-gpio.h>
-#include <mach/usb-control.h>
 
 #include <mach/glofiish.h>
 #include <mach/gta01.h>
@@ -75,14 +74,19 @@
 #include <plat/pm.h>
 #include <plat/udc.h>
 #include <plat/iic.h>
+#include <plat/usb-control.h>
 #include <plat/glofiish-cpld.h>
 
 #include <linux/jbt6k74.h>
 
+#include <../drivers/input/touchscreen/ts_filter_chain.h>
+#ifdef CONFIG_TOUCHSCREEN_FILTER
 #include <../drivers/input/touchscreen/ts_filter_linear.h>
 #include <../drivers/input/touchscreen/ts_filter_mean.h>
 #include <../drivers/input/touchscreen/ts_filter_median.h>
-#include <../drivers/input/touchscreen/ts_filter_group.h>
+/*#include <../drivers/input/touchscreen/ts_filter_group.h>*/
+#endif
+
 
 /*
  * this gets called every 1ms when we paniced.
@@ -276,7 +280,7 @@ static struct i2c_board_info glofiish_i2c_devs[] __initdata = {
 	},
 	{
 		/* FM Tuner */
-		I2C_BOARD_INFO("si4700", 0x10),
+		I2C_BOARD_INFO("si470x-i2c", 0x10),
 		.irq = M800_IRQ_FMRADIO,
 	},
 	{
@@ -357,47 +361,50 @@ static struct s3c2410_udc_mach_info glofiish_udc_cfg = {
 
 /* touchscreen configuration */
 
-static struct ts_filter_linear_configuration m800_ts_linear_config = {
-	.constants = {1, 0, 0, 0, 1, 0, 1},	/* don't modify coords */
-	.coord0 = 0,
-	.coord1 = 1,
-};
+#ifdef CONFIG_TOUCHSCREEN_FILTER
 
-static struct ts_filter_group_configuration m800_ts_group_config = {
-	.extent = 12,
+#if 0
+const static struct ts_filter_group_configuration m800_ts_group = {
+	.length = 12,
 	.close_enough = 10,
-	.threshold = 6,		/* at least half of the points in a group */
+	.threshold = 6,		/* At least half of the points in a group. */
 	.attempts = 10,
 };
+#endif
 
-static struct ts_filter_median_configuration m800_ts_median_config = {
+const static struct ts_filter_median_configuration m800_ts_median = {
 	.extent = 20,
 	.decimation_below = 3,
 	.decimation_threshold = 8 * 3,
 	.decimation_above = 4,
 };
 
-static struct ts_filter_mean_configuration m800_ts_mean_config = {
-	.bits_filter_length = 2, /* 4 points */
+const static struct ts_filter_mean_configuration m800_ts_mean = {
+	.length = 4,
 };
 
+const static struct ts_filter_linear_configuration m800_ts_linear = {
+	.constants = {1, 0, 0, 0, 1, 0, 1},	/* Don't modify coords. */
+	.coord0 = 0,
+	.coord1 = 1,
+};
+#endif
 
-static struct s3c2410_ts_mach_info glofiish_ts_cfg = {
+const struct ts_filter_chain_configuration filter_configuration[] =
+{
+#ifdef CONFIG_TOUCHSCREEN_FILTER
+/*	{&ts_filter_group_api,		&m800_ts_group.config}, */
+	{&ts_filter_median_api,		&m800_ts_median.config},
+	{&ts_filter_mean_api,		&m800_ts_mean.config},
+	{&ts_filter_linear_api,		&m800_ts_linear.config},
+#endif
+	{NULL, NULL},
+};
+
+const static struct s3c2410_ts_mach_info glofiish_ts_cfg = {
 	.delay = 10000,
-	.presc = 50000000 / 1000000, /* 50 MHz PCLK / 1MHz */
-	//.presc = 0xff, /* slow as we can go */
-	.filter_sequence = {
-//		[0] = &ts_filter_group_api,
-		[0] = &ts_filter_median_api,
-		[1] = &ts_filter_mean_api,
-		[2] = &ts_filter_linear_api,
-	},
-	.filter_config = {
-//		[0] = &m800_ts_group_config,
-		[0] = &m800_ts_median_config,
-		[1] = &m800_ts_mean_config,
-		[2] = &m800_ts_linear_config,
-	},
+	.presc = 0xff, /* slow as we can go */
+	.filter_config = filter_configuration,
 };
 
 
@@ -454,8 +461,8 @@ static struct s3c2410_spigpio_info spi_gpio_cfg = {
 	.pin_clk	= S3C2410_GPD10,
 	.pin_mosi	= S3C2410_GPD9,
 	.pin_miso	= S3C2410_GPD8,
-	.board_size	= ARRAY_SIZE(glofiish_spi_board_info),
-	.board_info	= glofiish_spi_board_info,
+/*	.board_size	= ARRAY_SIZE(glofiish_spi_board_info),
+	.board_info	= glofiish_spi_board_info, */
 	.chip_select	= &spi_gpio_cs,
 	.num_chipselect = 2,   /*** Should be 1 or 2 for gta01? ***/
 };
@@ -774,6 +781,8 @@ static void __init glofiish_machine_init(void)
 	s3c_i2c0_set_platdata(&m800_i2c_pdata);
 	i2c_register_board_info(0, glofiish_i2c_devs,
 				ARRAY_SIZE(glofiish_i2c_devs));
+	spi_register_board_info(glofiish_spi_board_info,
+	            ARRAY_SIZE(glofiish_spi_board_info));
 
 	platform_add_devices(glofiish_devices, ARRAY_SIZE(glofiish_devices));
 
