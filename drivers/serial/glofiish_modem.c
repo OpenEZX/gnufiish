@@ -142,7 +142,7 @@ struct gfish_modem {
 };
 
 #define port_to_modem(x)	container_of((x), struct gfish_modem, port)
-
+#if 1
 /***********************************************************************
 
  * UART part
@@ -593,10 +593,13 @@ static void tx_atz(struct gfish_modem *gm)
 	gm->spi.state = STATE_WAIT_nSS1;
 	config_spi(gm);
 }
-
+#endif
 /* This interrupt is called by the SPI controller */
 static irqreturn_t s3c24xx_spi_irq(int irq, void *priv)
 {
+printk("Got SPI IRQ\n");
+
+#if 1
 	struct gfish_modem *gm = priv;
 	struct device *dev = &gm->pdev->dev;
 	unsigned int spsta = readb(gm->spi.regs + S3C2410_SPSTA);
@@ -700,7 +703,7 @@ static irqreturn_t s3c24xx_spi_irq(int irq, void *priv)
 			state_name(gm->spi.state));
 	}
 #endif /* ! USE_DMA */
-
+#endif
 #if 0
 	if (port && port->info) {
  		xmit = &port->info->xmit;
@@ -740,7 +743,7 @@ if (xmit) {
 irq_done:
 	return IRQ_HANDLED;
 }
-
+#if 1
 #if 0
 /* high level function to transceive some data */
 int gfish_modem_transceive(struct gfish_modem *gm, const u_int8_t *tx,
@@ -775,17 +778,18 @@ struct gfish_spi_cmd {
 	u_int16_t	cmd;
 	u_int16_t	dummy;
 };
-
+#endif
 /* This interrupt is called every every time the modem asserts nSS1
  * and thereby activates the SPI transfer with the application processor */
 static irqreturn_t gfish_modem_irq(int irq, void *priv)
 {
+#if 1
 	struct gfish_modem *gm = priv;
 	struct device *dev = &gm->pdev->dev;
 	int level = s3c2410_gpio_getpin(S3C2410_GPG3);
-
-	printk("***************YAY********************\n");
-
+#endif
+	printk("Got GSM IRQ\n");
+#if 1
 	dev_dbg(dev, "Modem nSS1 IRQ(%u) state(%s)\n",
 		level ? 1 : 0, state_name(gm->spi.state));
 
@@ -806,9 +810,10 @@ static irqreturn_t gfish_modem_irq(int irq, void *priv)
 		break;
 	}
 out:
+#endif
 	return IRQ_HANDLED;
 }
-
+#if 1
 static ssize_t set_txatz(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct gfish_modem *gm = dev_get_drvdata(dev);
@@ -818,23 +823,26 @@ static ssize_t set_txatz(struct device *dev, struct device_attribute *attr, cons
 
 static DEVICE_ATTR(tx_atz, S_IWUSR | S_IRUGO,
 		   NULL, set_txatz);
-
+#endif
 static int spi_clk_poller(void *d)
 {
 	struct device *dev = d;
 	dev_dbg(dev, "Poller thread started");
-	int level = 0;
+	int level = -1, last_level = -2;
 
-	for(;;) {
-		//level++;
-		level = s3c2410_gpio_getpin(S3C2410_GPD10);
-		if (level)
+	while(!kthread_should_stop()) {
+		level = !!s3c2410_gpio_getpin(S3C2410_GPD10);
+		if (level != last_level) {
 			printk("***** Got an edge on SPICLK1: %i\n", level);
-		msleep(1);
+			last_level = level;
+		}
+		//msleep(1);
 	}
 
 	return 0;
 }
+
+static struct task_struct *poller_thread;
 
 static int __init gm_probe(struct platform_device *pdev)
 {
@@ -891,7 +899,7 @@ static int __init gm_probe(struct platform_device *pdev)
 		rc = PTR_ERR(gm->spi.clk);
 		goto out_remap;
 	}
-
+#if 1
 	rc = uart_register_driver(&gm_uart_driver);
 	if (rc < 0) {
 		dev_err(&pdev->dev, "Cannot register UART driver\n");
@@ -909,7 +917,7 @@ static int __init gm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Cannot add UART port\n");
 		goto out_driver;
 	}
-
+#endif
 	rc = request_irq(gm->irq, gfish_modem_irq,
 			 IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING,
 			 pdev->name, gm);
@@ -925,7 +933,7 @@ static int __init gm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Cannot claim IRQ\n");
 		goto out_irq;
 	}
-
+#if 1
 	rc = device_create_file(&pdev->dev, &dev_attr_tx_atz);
 	if (rc < 0) {
 		dev_err(&pdev->dev, "failed to add sysfs file\n");
@@ -939,9 +947,9 @@ static int __init gm_probe(struct platform_device *pdev)
 		goto out_file;
 	}
 #endif
-
-	if (IS_ERR(kthread_run(spi_clk_poller, gm, "spi-slave-clk-poller")))
-		dev_err(&pdev->dev, "failed to setup spi slave poller thread");
+#endif
+	poller_thread = kthread_run(spi_clk_poller, gm, "spi-slave-clk-poller");
+		//dev_err(&pdev->dev, "failed to setup spi slave poller thread");
 
 	s3c24xx_spi_slave_init(gm);
 
@@ -980,14 +988,17 @@ static int gm_remove(struct platform_device *pdev)
 {
 	struct gfish_modem *gm = platform_get_drvdata(pdev);
 
+	kthread_stop(poller_thread);
+
 	/* de-assert the GSM SPI request */
 	set_gsm_spi_req(gm, 0);
-
+#if 1
 #ifdef USE_DMA
 	s3c2410_dma_ctrl(gm->spi.dmach, S3C2410_DMAOP_FLUSH);
 	s3c2410_dma_free(gm->spi.dmach, &gm_dma_client);
 #endif
 	device_remove_file(&pdev->dev, &dev_attr_tx_atz);
+#endif
 	free_irq(gm->spi.irq, gm);
 	//disable_irq_wake(gm->irq);
 	free_irq(gm->irq, gm);
