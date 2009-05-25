@@ -126,6 +126,13 @@ config MACH_GLOFIISH
 	help
 	  Common machine code for E-TEN glofiish hardware
 
+config GLOFIISH_PM_FM
+    tristate "E-TEN M800 FM power management"
+    depends on MACH_GLOFIISH
+    help
+        This driver supports the power management for the fm chip included
+        in the M800 phone from E-TEN.
+
 config GLOFIISH_CPLD
 	tristate "E-TEN CPLD driver"
 	depends on MACH_GLOFIISH

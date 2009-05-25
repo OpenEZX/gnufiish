@@ -623,6 +623,10 @@ static struct platform_device m800_pm_gps_dev = {
 	.name		= "neo1973-pm-gps",
 };
 
+static struct platform_device m800_pm_fm_dev = {
+    .name       = "glofiish-pm-fm",
+};
+
 static struct resource m800_modem_resources[] = {
 	[0] = {
 		.flags	= IORESOURCE_IRQ,
@@ -773,6 +777,7 @@ static void __init glofiish_machine_init(void)
 	platform_device_register(&gta01_bl_dev);
 	platform_device_register(&m800_pm_bt_dev);
 	platform_device_register(&m800_pm_gps_dev);
+    platform_device_register(&m800_pm_fm_dev);
 	platform_device_register(&m800_modem_dev);
 	platform_device_register(&m800_cpld_dev);
 	platform_device_register(&m800_button_dev);

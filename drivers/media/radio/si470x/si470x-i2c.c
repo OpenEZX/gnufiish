@@ -20,12 +20,14 @@ static int si470x_i2c_get_register(struct si470x_device *radio, int regnr)
     int count;
     int n;
     struct i2c_client *client;
-    
+
     client = (struct i2c_client *) radio->dev;
 
     if(!client)
         return -ENXIO;
 
+    printk(KERN_INFO "si470x-i2c: i2c-addr = %s\n", client->addr);
+ 
     /* internal chip read counter starts at addr of STATUSRSSI 
      * so for example we have to read 16 registers to get the 
      * value of the BOOTCONFIG register
