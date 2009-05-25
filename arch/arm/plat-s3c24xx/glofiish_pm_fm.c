@@ -104,8 +104,8 @@ static void fm_pwron_set(int on)
              * Typical power down sequence for the si4700 looks like this
              * - put nRST to low will reset the whole chip and put it in power down mode
              */
-            /*s3c2410_gpio_cfgpin(M800_GPIO_FM_nRST, S3C2410_GPIO_OUTPUT);
-            s3c2410_gpio_setpin(M800_GPIO_FM_nRST, 0);*/
+            s3c2410_gpio_cfgpin(M800_GPIO_FM_nRST, S3C2410_GPIO_OUTPUT);
+            s3c2410_gpio_setpin(M800_GPIO_FM_nRST, 0);
 
             printk(KERN_INFO "glofiish_pm_fm: powerdown done\n");
 
