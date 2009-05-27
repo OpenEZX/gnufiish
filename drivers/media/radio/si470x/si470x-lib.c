@@ -172,11 +172,6 @@ static unsigned short de = 1;
 module_param(de, ushort, 0444);
 MODULE_PARM_DESC(de, "De-emphasis: 0=75us *1=50us*");
 
-/* USB timeout */
-static unsigned int usb_timeout = 500;
-module_param(usb_timeout, uint, 0644);
-MODULE_PARM_DESC(usb_timeout, "USB timeout (ms): *500*");
-
 /* Tune timeout */
 static unsigned int tune_timeout = 3000;
 module_param(tune_timeout, uint, 0644);
