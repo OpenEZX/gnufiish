@@ -165,7 +165,7 @@
 #define PORT_NWPSERIAL	85
 
 /* E-TEN glofiish */
-#define PORT_GFISH	84
+#define PORT_GFISH	86
 
 #ifdef __KERNEL__
 
