@@ -47,6 +47,7 @@ obj-$(CONFIG_S3C24XX_SPI_BUS1_GPG5_GPG6_GPG7)    += spi-bus1-gpg5_6_7.o
 obj-$(CONFIG_MACH_SMDK)		+= common-smdk.o
 obj-$(CONFIG_GLOFIISH_CPLD)	+= glofiish-cpld.o
 obj-$(CONFIG_GLOFIISH_PM_FM)	+= glofiish_pm_fm.o
+obj-$(CONFIG_GLOFIISH_PM_MODEM) += glofiish_pm_modem.o
 obj-$(CONFIG_MACH_NEO1973)	+= \
                                    neo1973_pm_gsm.o \
                                    neo1973_pm_gps.o \
