@@ -133,6 +133,13 @@ config GLOFIISH_PM_FM
         This driver supports the power management for the fm chip included
         in the M800 phone from E-TEN.
 
+config GLOFIISH_PM_MODEM
+    tristate "E-TEN glofiish GSM/UMTS Modem Power Management"
+    depends on MACH_GLOFIISH
+    help 
+        This driver support the power management for the modem included
+        in the M800 phone from E-TEN
+
 config GLOFIISH_CPLD
 	tristate "E-TEN CPLD driver"
 	depends on MACH_GLOFIISH
