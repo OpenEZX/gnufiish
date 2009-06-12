@@ -12,6 +12,7 @@
 #include <asm/io.h>
 #include <asm/irq.h>
 #include <asm/dma.h>
+#include <asm/delay.h>
 
 #include <plat/regs-spi.h>
 #include <plat/regs-dma.h>
@@ -38,97 +39,32 @@ int pwron = 0;
  */
 static void glofiish_modem_enable(int enable)
 {
-    /* 
-     * trace from qemu-gnufiish and knight:
-     <ACK>OK</ACK>
-    GPHCON: GPH01(in)=1 GPH02(in)=1 
-    GPHCON: GPH02(TXD[0])=1 GPH03(RXD[0])=0 
-    GPHCON: GPH00(nCTS0)=0 GPH01(nRTS0)=1 
-    GPHCON: GPH08(UEXTCLK)=0 
-    GPHCON: GPH08(in)=0 
-    <ACK>OK</ACK>
-    cpld_write: addr=0x00000012 value=1
-    GPADAT: GPA03(out)=1 
-    GPADAT: GPA11(out)=0 
-    GPADAT: GPA15(out)=1 
-    Modem reset
-    GPADAT: GPA15(out)=0 
-    GPBDAT: GPB04(out)=1 
-    Modem powered up.
-    GPBDAT: GPB04(out)=0 
-    Modem powered down.
-
-    <PROCESSING>
-    KEYON EMP360
-    </PROCESSING>
-    GPADAT: GPA11(out)=1 
-    glofiish_modem_write (len=1):02 
-    glofiish_modem_write (len=1):05 
-    glofiish_modem_write (len=1):00 
-    glofiish_modem_write (len=1):00 
-    glofiish_modem_write (len=1):03 
-    glofiish_modem_write (len=1):01 
-    glofiish_modem_write (len=1):d2 
-    glofiish_modem_write (len=1):02 
-    <RESULT><ITEM_NAME>AP Version</ITEM_NAME><TEST>FAILED</TEST></RESULT>GPHCON: GPH07(in)=0 
-    GPHCON: GPH03(in)=0 
-    GPHCON: GPH02(in)=1 
-    GPHCON: GPH02(out)=1 
-    GPHCON: GPH06(in)=0 
-    GPHCON: GPH06(out)=0 
-    GPHDAT: GPH02(out)=0 
-    */
     if(1)
     {
         if(enable)
         {
             printk(KERN_INFO "glofiish_modem_test: powering up ...\n");
 
-            /* configure UART */
-            s3c2410_gpio_cfgpin(S3C2410_GPH2, S3C2410_GPH2_TXD0);
-            s3c2410_gpio_cfgpin(S3C2410_GPH3, S3C2410_GPH3_RXD0);
-            s3c2410_gpio_cfgpin(S3C2410_GPH0, S3C2410_GPH0_nCTS0);
-            s3c2410_gpio_cfgpin(S3C2410_GPH1, S3C2410_GPH1_nRTS0);
-
-            /* knight also configures GPH8,GPA3 and GPA11 and sets GPA3 and GPA11
-             * don't know why 
-             */
-            s3c2410_gpio_cfgpin(S3C2410_GPH8, S3C2410_GPIO_INPUT);
-
-            s3c2410_gpio_cfgpin(S3C2410_GPA3, S3C2410_GPIO_OUTPUT);
-            s3c2410_gpio_setpin(S3C2410_GPA3, 1);
-
+            s3c2410_gpio_cfgpin(S3C2410_GPB4, S3C2410_GPIO_OUTPUT);
+            s3c2410_gpio_setpin(S3C2410_GPB4, 0);
+            s3c2410_gpio_cfgpin(S3C2410_GPA15, S3C2410_GPIO_OUTPUT);
+            s3c2410_gpio_setpin(S3C2410_GPA15, 0);
+            s3c2410_gpio_cfgpin(S3C2410_GPA4, S3C2410_GPIO_OUTPUT);
+            s3c2410_gpio_setpin(S3C2410_GPA4, 0);
+            s3c2410_gpio_cfgpin(S3C2410_GPF4, S3C2410_GPIO_INPUT);
+            s3c2410_gpio_pullup(S3C2410_GPF4, 0); /* pull down */
             s3c2410_gpio_cfgpin(S3C2410_GPA11, S3C2410_GPIO_OUTPUT);
             s3c2410_gpio_setpin(S3C2410_GPA11, 0);
-
-            /* Take care off that the modem is already down before launching */
-            s3c2410_gpio_cfgpin(M800_GPIO_GSM_RST, S3C2410_GPIO_OUTPUT);
-            s3c2410_gpio_setpin(M800_GPIO_GSM_RST, 1);
-            msleep(3000);
-
-            s3c2410_gpio_setpin(M800_GPIO_GSM_RST, 0);
-
-            /* Modem powerup sequence:
-             * - configure GPB4 as output
-             * - set it to low for 100 ticks
-             * - set it to high for 20000 ticks
-             * - set it low again 
-             */
-            s3c2410_gpio_cfgpin(M800_GPIO_GSM_PWRON, S3C2410_GPIO_OUTPUT);
-            s3c2410_gpio_setpin(M800_GPIO_GSM_PWRON, 0);
+            s3c2410_gpio_cfgpin(S3C2410_GPA15, S3C2410_GPIO_OUTPUT);
+            s3c2410_gpio_setpin(S3C2410_GPA15, 1);
+            msleep(300);
+            s3c2410_gpio_setpin(S3C2410_GPA15, 0);
+            s3c2410_gpio_setpin(S3C2410_GPB4, 0);
             msleep(100);
-
-            s3c2410_gpio_setpin(M800_GPIO_GSM_PWRON, 1);
-            msleep(20000);
-
-            s3c2410_gpio_setpin(M800_GPIO_GSM_PWRON, 0);
-
-            /* knight waits a long delay after it powered the modem on 
-             * and then puts GPA11 to high 
-             * waiting for 100000 ticks is only a guess
-             */
-            msleep(100000);
-            s3c2410_gpio_setpin(S3C2410_GPA11, 1);
+            s3c2410_gpio_setpin(S3C2410_GPB4, 1);
+            msleep(2000);
+            s3c2410_gpio_setpin(S3C2410_GPB4, 0);
+            msleep(5000);
 
             pwron = 1;
         }
@@ -142,14 +78,8 @@ static void glofiish_modem_enable(int enable)
              */
             s3c2410_gpio_cfgpin(M800_GPIO_GSM_RST, S3C2410_GPIO_OUTPUT);
             s3c2410_gpio_setpin(M800_GPIO_GSM_RST, 1);
-            msleep(3000);
+            msleep(300);
             s3c2410_gpio_setpin(M800_GPIO_GSM_RST, 0);
-
-            /* knight also resets the UART gpio configurations flags */
-            s3c2410_gpio_cfgpin(S3C2410_GPH3, S3C2410_GPIO_INPUT);
-            s3c2410_gpio_cfgpin(S3C2410_GPH2, S3C2410_GPIO_OUTPUT);
-            s3c2410_gpio_cfgpin(S3C2410_GPH6, S3C2410_GPIO_OUTPUT);
-            s3c2410_gpio_setpin(S3C2410_GPH2, 0);
 
             pwron = 0;
         }
