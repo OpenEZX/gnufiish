@@ -228,8 +228,7 @@ static const struct snd_kcontrol_new ak4641_snd_controls[] = {
 
 	SOC_SINGLE("Capture Volume", AK4641_PGA, 0, 127, 0),
 
-	SOC_SINGLE("Left Playback Volume", AK4641_LATT, 0, 255, 1),
-	SOC_SINGLE("Right Playback Volume", AK4641_RATT, 0, 255, 1),
+	SOC_DOUBLE_R("Master Playback Volume", AK4641_LATT, AK4641_RATT, 0, 255, 1),
 
 	SOC_SINGLE("AUX In Volume", AK4641_VOL, 0, 15, 0),
 	SOC_SINGLE("Mic In Volume", AK4641_VOL, 4, 7, 0),
